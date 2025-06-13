@@ -1,10 +1,11 @@
 class Skill:
     """Represents a single skill node in the graph."""
 
-    def __init__(self, skill_id: str, name: str, description: str = ""):
+    def __init__(self, skill_id: str, name: str, description: str = "", is_abstract: bool = False):
         self.skill_id = skill_id
         self.name = name
         self.description = description
+        self.is_abstract = is_abstract
 
         # --- Relationship Attributes ---
         # What skills are needed BEFORE this one?
@@ -20,7 +21,7 @@ class Skill:
         self.contains_types = set()  # Set of child skill_ids
 
     def __repr__(self):
-        return f"Skill(id='{self.skill_id}', name='{self.name}"
+        return f"Skill(id='{self.skill_id}', name='{self.name}'"
 
 
 class SkillGraph:
