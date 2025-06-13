@@ -7,29 +7,48 @@ from collections import deque
 # The value is a list of its prerequisites (the nodes that have an edge leading to the key).
 
 skill_graph = {
-    'Set Table': ['Know Place Setting Layout', 'Place Objects', 'Walk'],
-    'Know Place Setting Layout': ['ID Fork', 'ID Spoon', 'ID Knife', 'ID Napkin', 'ID Plate', 'ID Glass'],
-    'Place Objects': ['Grasp Small Object', 'ID Fork', 'ID Spoon', 'ID Knife', 'ID Napkin', 'ID Plate', 'ID Glass', 'Walk', 'Coordinate Limbs'],
-    'Locate Table': ['See Objects'],
-    'Grasp Small Object': ['See Objects', 'Coordinate Limbs'],
-    'ID Fork': ['See Objects'],
-    'ID Spoon': ['See Objects'],
-    'ID Knife': ['See Objects'],
-    'ID Napkin': ['See Objects'],
-    'ID Plate': ['See Objects'],
-    'ID Glass': ['See Objects'],
-    'See Objects': [],
-    'Walk': ['Crawl'],
-    'Crawl': ['Coordinate Limbs'],
-    'Coordinate Limbs': []
+    "Set Table": ["Know Place Setting Layout", "Place Objects", "Walk"],
+    "Know Place Setting Layout": [
+        "ID Fork",
+        "ID Spoon",
+        "ID Knife",
+        "ID Napkin",
+        "ID Plate",
+        "ID Glass",
+    ],
+    "Place Objects": [
+        "Grasp Small Object",
+        "ID Fork",
+        "ID Spoon",
+        "ID Knife",
+        "ID Napkin",
+        "ID Plate",
+        "ID Glass",
+        "Walk",
+        "Coordinate Limbs",
+    ],
+    "Locate Table": ["See Objects"],
+    "Grasp Small Object": ["See Objects", "Coordinate Limbs"],
+    "ID Fork": ["See Objects"],
+    "ID Spoon": ["See Objects"],
+    "ID Knife": ["See Objects"],
+    "ID Napkin": ["See Objects"],
+    "ID Plate": ["See Objects"],
+    "ID Glass": ["See Objects"],
+    "See Objects": [],
+    "Walk": ["Crawl"],
+    "Crawl": ["Coordinate Limbs"],
+    "Coordinate Limbs": [],
 }
 
 # You can add a print statement to test it out
-if __name__ == '__main__':
+if __name__ == "__main__":
     import json
-    #print(json.dumps(skill_graph, indent=2))
+
+    # print(json.dumps(skill_graph, indent=2))
 
 # Function to find BFS of Graph from given source s
+
 
 # Function to find BFS of Graph from a given source s
 def bfs(adj, s):
@@ -55,7 +74,7 @@ def bfs(adj, s):
         # Get all prerequisites of the current skill.
         # If a prerequisite has not been visited,
         # mark it visited and enqueue it.
-        for prereq in adj.get(curr, []): # Use .get() for safety
+        for prereq in adj.get(curr, []):  # Use .get() for safety
             if prereq not in visited:
                 visited.add(prereq)
                 q.append(prereq)
@@ -66,7 +85,7 @@ def bfs(adj, s):
 if __name__ == "__main__":
     # Your skill_graph dictionary is defined above
 
-    start_node = 'Set Table'
+    start_node = "Set Table"
     print(f"Finding all prerequisites for '{start_node}' via BFS:")
 
     # Run the corrected BFS
@@ -95,6 +114,7 @@ def dfs_iterative(adj, start_node):
                     stack.append(prereq)
     return res
 
+
 # We use a helper function to pass the 'visited' set through the recursive calls.
 def dfs_recursive(adj, start_node):
     visited = set()
@@ -114,10 +134,11 @@ def dfs_recursive(adj, start_node):
     _dfs_helper(start_node)
     return res
 
+
 if __name__ == "__main__":
     # Your skill_graph dictionary is defined above...
 
-    start_node = 'Set Table'
+    start_node = "Set Table"
 
     print("--- Iterative DFS ---")
     path1 = dfs_iterative(skill_graph, start_node)
