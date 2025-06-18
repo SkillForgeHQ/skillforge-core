@@ -1,0 +1,30 @@
+# docker-compose.yml
+
+services:
+  # This defines our PostgreSQL database service
+  db:
+    image: postgres:16.3-alpine # Use a specific, lightweight version of Postgres for consistency
+    container_name: skillforge-db # A custom name for easy identification
+    restart: always # Ensures the container restarts automatically if it crashes or the system reboots
+
+    # Environment variables to configure the Postgres instance
+    # IMPORTANT: For production, use Docker secrets or a .env file. This is acceptable for local dev.
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+
+    # Maps port 5432 inside the container to port 5432 on your host machine
+    # This allows your Python script (running on the host) to connect to the database
+    ports:
+      - "5432:5432"
+
+    # Mounts a named volume to persist database data
+    # This is the most critical part for data persistence
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+# Defines the named volume used by the 'db' service
+volumes:
+  postgres_data:
+    driver: local # Specifies the default local driver for the volume

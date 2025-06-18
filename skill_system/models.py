@@ -1,7 +1,9 @@
 class Skill:
     """Represents a single skill node in the graph."""
 
-    def __init__(self, skill_id: str, name: str, description: str = "", is_abstract: bool = False):
+    def __init__(
+        self, skill_id: str, name: str, description: str = "", is_abstract: bool = False
+    ):
         self.skill_id = skill_id
         self.name = name
         self.description = description

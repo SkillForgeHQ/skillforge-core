@@ -1,49 +1,46 @@
-from pydantic import BaseModel
-from typing import List, Optional
-from fastapi import APIRouter, HTTPException
+# api/routers/skills.py
+
+from typing import List
+from fastapi import APIRouter, HTTPException, Depends
+from sqlalchemy.engine import Connection
+
+from .. import crud, schemas
+
+# CORRECTED: This now points to 'database' instead of 'main'
+from ..database import get_db
 
 router = APIRouter()
-print("--- MODULE 'skills.py' IS BEING LOADED ---")
 
-fake_db = {
-    "python-basics": {
-        "skill_id": "python-basics",
-        "name": "Python Basics",
-        "description": "Fundamental concepts of Python programming.",
-        "dependencies": []
-    }
-}
 
-class Skill(BaseModel):
-    skill_id: str
-    name: str
-    description: Optional[str] = None
-    dependencies: List[str] = []
+@router.post("/", response_model=schemas.Skill, status_code=201)
+def create_skill(skill: schemas.SkillCreate, db: Connection = Depends(get_db)):
+    db_skill = crud.get_skill_by_name(conn=db, name=skill.name)
+    if db_skill:
+        raise HTTPException(
+            status_code=400, detail=f"Skill with name '{skill.name}' already exists."
+        )
+    return crud.create_skill(conn=db, skill=skill)
 
-@router.get("/", response_model=List[Skill])
-async def list_skills():
-    return list(fake_db.values())
 
-@router.get('/{skill_id}', response_model=Skill)
-async def read_skill(skill_id: str):
-    if skill_id not in fake_db:
+@router.get("/", response_model=List[schemas.Skill])
+def list_skills(skip: int = 0, limit: int = 100, db: Connection = Depends(get_db)):
+    skills = crud.get_all_skills(conn=db, skip=skip, limit=limit)
+    return skills
+
+
+@router.get("/{skill_name}", response_model=schemas.Skill)
+def read_skill(skill_name: str, db: Connection = Depends(get_db)):
+    db_skill = crud.get_skill_by_name(conn=db, name=skill_name)
+    if db_skill is None:
         raise HTTPException(status_code=404, detail="Skill not found")
-    return fake_db[skill_id]
+    return db_skill
 
-@router.post('/', response_model=Skill)
-async def create_skill(skill: Skill):
-    global fake_db
-    if skill.skill_id in fake_db:
-        raise HTTPException(status_code=400, detail="Skill ID already exists")
-    fake_db[skill.skill_id] = skill.model_dump()
-    return skill
 
-@router.put('/{skill_id}', response_model=Skill)
-async def update_skill(skill_id: str, skill_update: Skill):
-    global fake_db
-    if skill_id not in fake_db:
+@router.put("/{skill_name}", response_model=schemas.Skill)
+def update_skill_endpoint(
+    skill_name: str, skill: schemas.SkillUpdate, db: Connection = Depends(get_db)
+):
+    db_skill = crud.get_skill_by_name(conn=db, name=skill_name)
+    if db_skill is None:
         raise HTTPException(status_code=404, detail="Skill not found")
-
-    updated_data = skill_update.model_dump()
-    fake_db[skill_id] = updated_data
-    return updated_data
+    return crud.update_skill(conn=db, name=skill_name, skill=skill)

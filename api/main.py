@@ -1,20 +1,17 @@
-import sys  # <--- ADD THIS AT THE TOP
+# api/main.py
 
 from fastapi import FastAPI
 from .routers import skills
 
-app = FastAPI(title="SkillForge API")
-
-app.include_router(
-    skills.router,
-    prefix="/skills",
-    tags=["Skills"],
+app = FastAPI(
+    title="SkillForge API",
+    description="The core API for the SkillForge engine.",
+    version="0.1.0",
 )
 
-@app.get("/")
-async def root():
-    return {"message": "Welcome to the SkillForge API"}
+app.include_router(skills.router, prefix="/skills", tags=["Skills"])
 
-@app.get("/debug-modules")  # <--- ADD THIS ENTIRE BLOCK
-def get_loaded_modules():
-    return sorted(list(sys.modules.keys()))
+
+@app.get("/", tags=["Root"])
+async def read_root():
+    return {"message": "Welcome to the SkillForge API"}
