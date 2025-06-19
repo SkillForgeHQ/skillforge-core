@@ -1,7 +1,7 @@
 # api/main.py
 
 from fastapi import FastAPI
-from .routers import skills
+from .routers import skills, users
 
 app = FastAPI(
     title="SkillForge API",
@@ -10,7 +10,7 @@ app = FastAPI(
 )
 
 app.include_router(skills.router, prefix="/skills", tags=["Skills"])
-
+app.include_router(users.router)
 
 @app.get("/", tags=["Root"])
 async def read_root():

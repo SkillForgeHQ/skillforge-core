@@ -34,3 +34,21 @@ class SkillUpdate(SkillBase):
     name: Optional[str] = None
     description: Optional[str] = None
     dependencies: Optional[List[str]] = None
+
+
+class UserBase(BaseModel):
+    email: str
+
+
+# Properties to receive via API on creation
+class UserCreate(UserBase):
+    password: str
+
+
+# Properties to return to client
+class User(UserBase):
+    id: int
+    is_active: bool
+
+    class Config:
+        from_attributes = True  # Allows populating from ORM objects

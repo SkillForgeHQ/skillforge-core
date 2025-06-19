@@ -11,7 +11,7 @@ from sqlalchemy import (
     func,
     TIMESTAMP,
     Integer,
-    Boolean
+    Boolean,
 )
 from sqlalchemy.engine import Connection
 from sqlalchemy.dialects.postgresql import UUID, ARRAY
@@ -60,9 +60,10 @@ users = Table(
     metadata,
     Column("id", Integer, primary_key=True, index=True),
     Column("email", String, unique=True, index=True),
-    Column("hashed_password", String, nullable=False), # Added nullable=False
+    Column("hashed_password", String, nullable=False),  # Added nullable=False
     Column("is_active", Boolean, default=True),
 )
+
 
 def get_db() -> Connection:
     conn = engine.connect()
