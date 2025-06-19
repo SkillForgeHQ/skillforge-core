@@ -53,8 +53,8 @@ class User(UserBase):
     class Config:
         from_attributes = True  # Allows populating from ORM objects
 
+
 # ---- Token Schemas ----
 class Token(BaseModel):
     access_token: str
     token_type: str
-

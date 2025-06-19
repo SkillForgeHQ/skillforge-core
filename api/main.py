@@ -12,6 +12,7 @@ app = FastAPI(
 app.include_router(skills.router, prefix="/skills", tags=["Skills"])
 app.include_router(users.router)
 
+
 @app.get("/", tags=["Root"])
 async def read_root():
     return {"message": "Welcome to the SkillForge API"}

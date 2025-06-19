@@ -65,6 +65,7 @@ def update_skill(conn: Connection, name: str, skill: schemas.SkillUpdate):
 
 # Add these functions to api/crud.py
 
+
 def get_user_by_email(conn: Connection, email: str):
     """Fetches a single user by their email address."""
     query = select(database.users).where(database.users.c.email == email)
