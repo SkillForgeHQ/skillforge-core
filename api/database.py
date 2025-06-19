@@ -10,6 +10,8 @@ from sqlalchemy import (
     Text,
     func,
     TIMESTAMP,
+    Integer,
+    Boolean
 )
 from sqlalchemy.engine import Connection
 from sqlalchemy.dialects.postgresql import UUID, ARRAY
@@ -53,6 +55,14 @@ skills = Table(
     ),
 )
 
+users = Table(
+    "users",
+    metadata,
+    Column("id", Integer, primary_key=True, index=True),
+    Column("email", String, unique=True, index=True),
+    Column("hashed_password", String, nullable=False), # Added nullable=False
+    Column("is_active", Boolean, default=True),
+)
 
 def get_db() -> Connection:
     conn = engine.connect()
