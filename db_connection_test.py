@@ -2,8 +2,9 @@
 
 import os
 import psycopg
+import logging
 from dotenv import load_dotenv
-
+from neo4j import GraphDatabase
 
 def main():
     """
@@ -78,6 +79,30 @@ def main():
         print(f"❌ DATABASE CONNECTION FAILED: {e}")
     except Exception as e:
         print(f"❌ AN UNEXPECTED ERROR OCCURRED: {e}")
+
+    load_dotenv()
+
+    # Add this line to get detailed logs from the driver
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+    NEO4J_URI = os.getenv("NEO4J_URI")
+    NEO4J_USER = os.getenv("NEO4J_USER")
+    NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD")
+
+    print("Attempting to connect to Neo4j...")
+    print(f"URI: {NEO4J_URI}")
+
+    try:
+        with GraphDatabase.driver(
+                NEO4J_URI,
+                auth=(NEO4J_USER, NEO4J_PASSWORD)
+        ) as driver:
+            driver.verify_connectivity()
+            print("Connection successful!")
+    except Exception as e:
+        print(f"Connection failed: {e}")
+        import traceback
+        traceback.print_exc()
 
 
 if __name__ == "__main__":

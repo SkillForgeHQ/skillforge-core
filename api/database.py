@@ -16,6 +16,7 @@ from sqlalchemy import (
 from sqlalchemy.engine import Connection
 from sqlalchemy.dialects.postgresql import UUID, ARRAY
 from dotenv import load_dotenv
+from neo4j import GraphDatabase, Driver
 
 load_dotenv()
 
@@ -71,3 +72,36 @@ def get_db() -> Connection:
         yield conn
     finally:
         conn.close()
+
+#neo4J
+
+NEO4J_URI = os.getenv("NEO4J_URI")
+NEO4J_USER = os.getenv("NEO4J_USER")
+NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD")
+
+# This class will manage the driver instance
+class GraphDatabaseManager:
+    def __init__(self):
+        self.driver: Driver = None
+
+    def connect(self):
+        """Establishes the connection to the Neo4j database."""
+        self.driver = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
+
+    def close(self):
+        """Closes the connection."""
+        if self.driver is not None:
+            self.driver.close()
+            self.driver = None
+
+# Create a single instance of the manager for the application's lifecycle
+graph_db_manager = GraphDatabaseManager()
+
+# FastAPI dependency to get the database driver
+def get_graph_db_driver() -> Driver:
+    if graph_db_manager.driver is None:
+        graph_db_manager.connect()
+    return graph_db_manager.driver
+
+# You might also want to register startup and shutdown events in your api/main.py
+# to connect and close the driver cleanly.

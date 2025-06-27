@@ -28,6 +28,7 @@ def register_user(user: schemas.UserCreate, conn: Connection = Depends(get_db)):
     created_user = crud.create_user(conn=conn, user=user)
     return created_user
 
+
 @router.get("/me", response_model=schemas.User)
 def read_users_me(current_user: schemas.User = Depends(get_current_user)):
     """

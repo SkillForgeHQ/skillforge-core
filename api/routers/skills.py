@@ -3,6 +3,8 @@
 from typing import List
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.engine import Connection
+from neo4j import Driver
+from ..database import get_graph_db_driver
 
 from .. import crud, schemas
 
@@ -44,3 +46,13 @@ def update_skill_endpoint(
     if db_skill is None:
         raise HTTPException(status_code=404, detail="Skill not found")
     return crud.update_skill(conn=db, name=skill_name, skill=skill)
+
+@router.get("/graph/test", response_model=List[str])
+def get_skill_titles_from_graph(driver: Driver = Depends(get_graph_db_driver)):
+    """
+    A test endpoint to verify the connection to Neo4j and fetch skill titles.
+    """
+    # First, you need to CREATE some data in your AuraDB browser, for example:
+    # CREATE (:Skill {title: 'Python'}), (:Skill {title: 'FastAPI'})
+    records, _, _ = driver.execute_query("MATCH (s:Skill) RETURN s.title AS title")
+    return [record["title"] for record in records]
