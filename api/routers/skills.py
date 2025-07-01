@@ -1,13 +1,11 @@
 # api/routers/skills.py
 
-from typing import List
 from fastapi import APIRouter, HTTPException, Depends
-from sqlalchemy.engine import Connection
 from neo4j import Driver
+from typing import List
+from sqlalchemy.engine import Connection
 from ..database import get_graph_db_driver
-
 from .. import crud, schemas
-
 # CORRECTED: This now points to 'database' instead of 'main'
 from ..database import get_db
 
