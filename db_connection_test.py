@@ -56,7 +56,6 @@ def main():
                 else:
                     print("✅ Step 2: 'Docker' skill already exists.")
 
-
                 # SELECT all skills to verify
                 print("\n--- Fetching all skills from database ---")
                 cur.execute(
@@ -71,7 +70,6 @@ def main():
         print(f"❌ POSTGRES CONNECTION FAILED: {e}")
     except Exception as e:
         print(f"❌ AN UNEXPECTED POSTGRES ERROR OCCURRED: {e}")
-
 
     # --- Section 2: Neo4j Connection Test with Debug Logging ---
     print("\n--- Attempting to connect to Neo4j ---")
@@ -92,14 +90,15 @@ def main():
 
     try:
         with GraphDatabase.driver(
-                uri_from_env,  # Use the variables we just loaded
-                auth=(user_from_env, password_from_env)
+            uri_from_env,  # Use the variables we just loaded
+            auth=(user_from_env, password_from_env),
         ) as driver:
             driver.verify_connectivity()
             print("✅ Connection successful!")
     except Exception as e:
         print(f"❌ Connection failed: {e}")
         import traceback
+
         traceback.print_exc()
 
 
