@@ -2,6 +2,14 @@
 
 import os
 from pathlib import Path
+from dotenv import load_dotenv
+
+# --- This block now correctly loads the .env file ---
+env_path = Path(__file__).parent.parent / '.env'
+load_dotenv(dotenv_path=env_path)
+# --- End of fix ---
+
+# --- All imports are now grouped at the top ---
 from sqlalchemy import (
     create_engine,
     MetaData,
@@ -16,18 +24,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.engine import Connection
 from sqlalchemy.dialects.postgresql import UUID, ARRAY
-from dotenv import load_dotenv
-
-# --- Add this block to explicitly load the .env file ---
-# This creates a path that goes up one level from this file (from api/ to the project root)
-# and finds the .env file there.
-env_path = Path(__file__).parent.parent / '.env'
-load_dotenv(dotenv_path=env_path)
-# --- End of new block ---
-
 from neo4j import GraphDatabase, Driver
-
-load_dotenv()
 
 DATABASE_URL = (
     f"postgresql+psycopg://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}@"
