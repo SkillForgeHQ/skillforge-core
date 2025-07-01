@@ -83,9 +83,15 @@ def get_db() -> Connection:
 # neo4J
 
 NEO4J_URI = os.getenv("NEO4J_URI")
-NEO4J_USER = os.getenv("NEO4J_USER")
+NEO4J_USERNAME = os.getenv("NEO4J_USERNAME")  # Corrected variable name
 NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD")
 
+if not NEO4J_URI:
+    raise ValueError("Missing NEO4J_URI environment variable. Cannot connect to Neo4j.")
+if not NEO4J_USERNAME:
+    raise ValueError("Missing NEO4J_USERNAME environment variable. Cannot connect to Neo4j.")
+if not NEO4J_PASSWORD:
+    raise ValueError("Missing NEO4J_PASSWORD environment variable. Cannot connect to Neo4j.")
 
 # This class will manage the driver instance
 class GraphDatabaseManager:
@@ -94,7 +100,7 @@ class GraphDatabaseManager:
 
     def connect(self):
         """Establishes the connection to the Neo4j database."""
-        self.driver = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
+        self.driver = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USERNAME, NEO4J_PASSWORD))
 
     def close(self):
         """Closes the connection."""
