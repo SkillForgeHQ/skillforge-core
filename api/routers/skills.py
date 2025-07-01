@@ -133,3 +133,30 @@ def get_skill_titles_from_graph(driver: Driver = Depends(get_graph_db_driver)):
     """
     records, _, _ = driver.execute_query("MATCH (s:Skill) RETURN s.name AS name")
     return [record["name"] for record in records]
+
+@router.post("/graph/skills/{parent_skill}/dependency/{child_skill}", status_code=201, tags=["Skills (Neo4j)"])
+def create_skill_dependency(parent_skill: str, child_skill: str, driver: Driver = Depends(get_graph_db_driver)):
+    with driver.session() as session:
+        session.execute_write(graph_crud.add_skill_dependency, parent_skill, child_skill)
+    return {"message": f"Dependency from {parent_skill} to {child_skill} created."}
+
+@router.get("/graph/skills/{skill_name}/dependencies", response_model=List[str], tags=["Skills (Neo4j)"])
+def read_skill_dependencies(skill_name: str, driver: Driver = Depends(get_graph_db_driver)):
+    """
+    Retrieve all skills that the specified skill depends on.
+    """
+    with driver.session() as session:
+        dependencies = session.execute_read(graph_crud.get_skill_dependencies, skill_name)
+    return dependencies
+
+@router.get("/graph/skills/{skill_name}/path", response_model=List[str], tags=["Skills (Neo4j)"])
+def get_consolidated_skill_path(skill_name: str, driver: Driver = Depends(get_graph_db_driver)):
+    """
+    Finds a single, consolidated learning path for the target skill.
+    """
+    with driver.session() as session:
+        # Call the new, more powerful graph_crud function
+        path = session.execute_read(graph_crud.get_consolidated_learning_path, skill_name)
+        if not path:
+            raise HTTPException(status_code=404, detail=f"No learning path found for skill '{skill_name}'. It may be a foundational skill or does not exist.")
+    return path

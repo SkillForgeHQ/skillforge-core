@@ -2,10 +2,11 @@
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.engine import Connection
-
-from .. import crud, schemas
-from ..database import get_db
+from neo4j import Driver
+from .. import crud, schemas, graph_crud
+from ..database import get_db, get_graph_db_driver
 from .auth import get_current_user
+from typing import List
 
 router = APIRouter(
     prefix="/users",
@@ -35,3 +36,46 @@ def read_users_me(current_user: schemas.User = Depends(get_current_user)):
     Fetch the currently logged-in user.
     """
     return current_user
+
+@router.post("/graph/users/{email}", status_code=201, tags=["Users (Neo4j)"])
+def create_graph_user(email: str, driver: Driver = Depends(get_graph_db_driver)):
+    """
+    Create a new User node in the graph.
+    """
+    with driver.session() as session:
+        user_email = session.execute_write(graph_crud.create_user_node, email)
+    return {"message": "User created in graph", "email": user_email}
+
+
+@router.post("/graph/users/{email}/skills/{skill_name}", status_code=201, tags=["Users (Neo4j)"])
+def create_user_skill_relationship(email: str, skill_name: str, driver: Driver = Depends(get_graph_db_driver)):
+    """
+    Link a user to a skill they already have.
+    """
+    with driver.session() as session:
+        # Note: You might want to add logic here to ensure both the user and skill exist before trying to link them.
+        session.execute_write(graph_crud.add_user_skill, email, skill_name)
+    return {"message": f"User '{email}' now has skill '{skill_name}'"}
+
+@router.get("/graph/users/{email}/learning-path/{skill_name}", response_model=List[str], tags=["Users (Neo4j)"])
+def get_personalized_path(email: str, skill_name: str, driver: Driver = Depends(get_graph_db_driver)):
+    """
+    Generates a personalized learning path for a user,
+    excluding skills they already possess.
+    """
+    with driver.session() as session:
+        # 1. Get the complete, ideal learning path
+        full_path = session.execute_read(graph_crud.get_consolidated_learning_path, skill_name)
+
+        # 2. Get the skills the user already has
+        user_skills = session.execute_read(graph_crud.get_user_skills, email)
+
+    # 3. In Python, filter the full path to exclude skills the user has
+    # We use a set for user_skills for a more efficient lookup.
+    user_skills_set = set(user_skills)
+    personalized_path = [skill for skill in full_path if skill not in user_skills_set]
+
+    if not full_path:
+            raise HTTPException(status_code=404, detail=f"No learning path found for skill '{skill_name}'.")
+
+    return personalized_path

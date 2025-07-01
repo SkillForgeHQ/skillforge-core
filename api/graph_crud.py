@@ -56,3 +56,122 @@ def delete_skill(tx, skill_name):
     # attached to it are deleted, preventing orphaned relationships.
     query = "MATCH (s:Skill {name: $skill_name}) DETACH DELETE s"
     tx.run(query, skill_name=skill_name)
+
+def add_skill_dependency(tx, parent_skill_name, child_skill_name):
+    """
+    Creates a DEPENDS_ON relationship from a parent skill to a child skill.
+    """
+    query = (
+        "MATCH (parent:Skill {name: $parent_skill_name}) "
+        "MATCH (child:Skill {name: $child_skill_name}) "
+        "MERGE (parent)-[:DEPENDS_ON]->(child)"
+    )
+    tx.run(query, parent_skill_name=parent_skill_name, child_skill_name=child_skill_name)
+
+# In api/graph_crud.py
+
+def get_skill_dependencies(tx, skill_name):
+    """
+    Finds all skills that the given skill has a DEPENDS_ON relationship to.
+    """
+    query = (
+        "MATCH (s:Skill {name: $skill_name})-[:DEPENDS_ON]->(dependency:Skill) "
+        "RETURN dependency.name AS dependency_name"
+    )
+    result = tx.run(query, skill_name=skill_name)
+    return [record["dependency_name"] for record in result]
+
+# In api/graph_crud.py
+
+def get_consolidated_learning_path(tx, skill_name):
+    """
+    Finds all prerequisite skills for a target skill and returns them
+    as a single, unique, ordered learning path.
+    """
+    # This query finds all prerequisite nodes, calculates their "depth"
+    # (longest path to a root), and returns a unique, sorted list of skill names.
+    query = """
+    MATCH (target:Skill {name: $skill_name})
+    // Find all skills that the target depends on (at any depth)
+    MATCH (prereq) WHERE (target)-[:DEPENDS_ON*0..]->(prereq)
+    // For each of those skills, find its longest path back to a true root
+    MATCH p = (prereq)-[:DEPENDS_ON*0..]->(root)
+    WHERE NOT (root)-[:DEPENDS_ON]->()
+    // Return the unique skills, ordered by their depth (most fundamental first)
+    WITH prereq, MAX(length(p)) AS depth
+    ORDER BY depth DESC
+    WITH COLLECT(prereq.name) AS path_with_duplicates
+    // Unwind the collection and get distinct elements to preserve order
+    UNWIND path_with_duplicates as skill_name
+    RETURN COLLECT(DISTINCT skill_name) as path
+    """
+    result = tx.run(query, skill_name=skill_name)
+    # The query now returns a single record containing one path
+    record = result.single()
+    return record["path"] if record else []
+
+def create_user_node(tx, email):
+    """
+    Creates a :User node in the graph with a unique email.
+    """
+    query = "MERGE (u:User {email: $email}) RETURN u.email"
+    result = tx.run(query, email=email)
+    return result.single()["u.email"]
+
+
+def add_user_skill(tx, email, skill_name):
+    """
+    Creates a :HAS_SKILL relationship from a User to a Skill.
+    It will create the User and Skill nodes if they don't already exist.
+    """
+    query = """
+    MERGE (u:User {email: $email})
+    MERGE (s:Skill {name: $skill_name})
+    MERGE (u)-[:HAS_SKILL]->(s)
+    """
+    tx.run(query, email=email, skill_name=skill_name)
+
+def get_user_skills(tx, email):
+    """
+    Retrieves a list of all skills a user has.
+    """
+    query = """
+    MATCH (u:User {email: $email})-[:HAS_SKILL]->(s:Skill)
+    RETURN s.name AS skill_name
+    """
+    result = tx.run(query, email=email)
+    return [record["skill_name"] for record in result]
+
+def create_user_node(tx, email):
+    """
+    Creates or finds a :User node in the graph with a unique email.
+    """
+    query = "MERGE (u:User {email: $email}) RETURN u.email"
+    result = tx.run(query, email=email)
+    return result.single()["u.email"]
+
+
+def add_user_skill(tx, email, skill_name):
+    """
+    Creates a :HAS_SKILL relationship from a User to a Skill.
+    This is a robust operation that will create the User and Skill nodes
+    if they don't already exist before creating the relationship.
+    """
+    query = """
+    MERGE (u:User {email: $email})
+    MERGE (s:Skill {name: $skill_name})
+    MERGE (u)-[:HAS_SKILL]->(s)
+    """
+    tx.run(query, email=email, skill_name=skill_name)
+
+
+def get_user_skills(tx, email):
+    """
+    Retrieves a list of all skills a user has.
+    """
+    query = """
+    MATCH (u:User {email: $email})-[:HAS_SKILL]->(s:Skill)
+    RETURN s.name AS skill_name
+    """
+    result = tx.run(query, email=email)
+    return [record["skill_name"] for record in result]
