@@ -9,7 +9,7 @@ app = FastAPI(
     version="0.1.0",
 )
 
-app.include_router(skills.router, prefix="/skills", tags=["Skills"])
+app.include_router(skills.router, prefix="/skills")
 app.include_router(users.router)
 app.include_router(auth.router)
 
