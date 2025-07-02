@@ -58,3 +58,14 @@ class User(UserBase):
 class Token(BaseModel):
     access_token: str
     token_type: str
+
+
+class MasteryCreate(BaseModel):
+    level: int
+    name: str
+    description: str
+
+
+class UserSkillMasteryCreate(BaseModel):
+    skill_name: str
+    mastery_level: int

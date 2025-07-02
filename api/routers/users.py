@@ -48,19 +48,43 @@ def create_graph_user(email: str, driver: Driver = Depends(get_graph_db_driver))
     return {"message": "User created in graph", "email": user_email}
 
 
-@router.post(
-    "/graph/users/{email}/skills/{skill_name}", status_code=201, tags=["Users (Neo4j)"]
-)
-def create_user_skill_relationship(
-    email: str, skill_name: str, driver: Driver = Depends(get_graph_db_driver)
+@router.post("/{email}/skills", status_code=201, tags=["Users (Neo4j)"])
+def set_skill_mastery_for_user(
+    email: str,
+    mastery_info: schemas.UserSkillMasteryCreate,
+    driver: Driver = Depends(get_graph_db_driver)
 ):
     """
-    Link a user to a skill they already have.
+    Sets or updates a user's mastery level for a specific skill.
+    This replaces the simple "add skill" functionality.
     """
     with driver.session() as session:
-        # Note: You might want to add logic here to ensure both the user and skill exist before trying to link them.
-        session.execute_write(graph_crud.add_user_skill, email, skill_name)
-    return {"message": f"User '{email}' now has skill '{skill_name}'"}
+        # Check if user and skill exist
+        user_node = session.execute_read(graph_crud.get_user_by_email, email) # Assuming you create a graph_crud version for this
+        if not user_node:
+            raise HTTPException(status_code=404, detail=f"User '{email}' not found.")
+
+        skill_node = session.execute_read(graph_crud.get_skill_by_name, mastery_info.skill_name)
+        if not skill_node:
+            raise HTTPException(status_code=404, detail=f"Skill '{mastery_info.skill_name}' not found.")
+
+        # Set the mastery level
+        result = session.execute_write(
+            graph_crud.set_user_skill_mastery,
+            email,
+            mastery_info.skill_name,
+            mastery_info.mastery_level
+        )
+
+        if not result:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Failed to set mastery. Ensure mastery level {mastery_info.mastery_level} exists for skill '{mastery_info.skill_name}'."
+            )
+
+    return {
+        "message": f"User '{email}' now has mastery level {result['level']} of skill '{result['skill']}'"
+    }
 
 
 @router.get(

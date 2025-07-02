@@ -164,18 +164,25 @@ def create_user_node(tx, email):
     return result.single()["u.email"]
 
 
-def add_user_skill(tx, email, skill_name):
+def set_user_skill_mastery(tx, email: str, skill_name: str, mastery_level: int):
     """
-    Creates a :HAS_SKILL relationship from a User to a Skill.
-    This is a robust operation that will create the User and Skill nodes
-    if they don't already exist before creating the relationship.
+    Creates or updates a relationship between a User and a Skill,
+    setting the mastery level on the relationship itself.
     """
     query = """
-    MERGE (u:User {email: $email})
-    MERGE (s:Skill {name: $skill_name})
-    MERGE (u)-[:HAS_SKILL]->(s)
+    MATCH (u:User {email: $email})
+    MATCH (s:Skill {name: $skill_name})
+    // This is the key part: Ensure the skill has a mastery defined at this level
+    MATCH (s)-[:HAS_MASTERY]->(m:Mastery {level: $mastery_level})
+
+    // MERGE the relationship and SET or UPDATE its level property
+    MERGE (u)-[r:HAS_MASTERY_OF]->(s)
+    SET r.level = $mastery_level
+
+    RETURN u.email AS email, r.level AS level, s.name AS skill
     """
-    tx.run(query, email=email, skill_name=skill_name)
+    result = tx.run(query, email=email, skill_name=skill_name, mastery_level=mastery_level)
+    return result.single()
 
 
 def get_user_skills(tx, email):
@@ -199,3 +206,17 @@ def remove_user_skill(tx, email, skill_name):
     DELETE r
     """
     tx.run(query, email=email, skill_name=skill_name)
+
+
+def add_mastery_level_to_skill(tx, skill_name: str, level: int, mastery_name: str, description: str):
+    """
+    Creates a :Mastery node and links it to an existing :Skill node.
+    """
+    query = """
+    MATCH (s:Skill {name: $skill_name})
+    MERGE (m:Mastery {name: $mastery_name, level: $level, description: $description})
+    MERGE (s)-[:HAS_MASTERY]->(m)
+    RETURN s.name AS skill, m.name AS mastery_name
+    """
+    result = tx.run(query, skill_name=skill_name, level=level, mastery_name=mastery_name, description=description)
+    return result.single()
