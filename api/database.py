@@ -34,34 +34,6 @@ DATABASE_URL = (
 engine = create_engine(DATABASE_URL)
 metadata = MetaData()
 
-skills = Table(
-    "skills",
-    metadata,
-    Column(
-        "id",
-        UUID(as_uuid=True),
-        primary_key=True,
-        server_default=func.gen_random_uuid(),
-    ),
-    Column("name", String(255), nullable=False, unique=True),
-    Column("description", Text),
-    Column("dependencies", ARRAY(String)),
-    Column(
-        "created_at",
-        TIMESTAMP(timezone=True),
-        nullable=False,
-        server_default=func.now(),
-    ),
-    # CORRECTED: Added nullable=False
-    Column(
-        "updated_at",
-        TIMESTAMP(timezone=True),
-        nullable=False,
-        server_default=func.now(),
-        onupdate=func.now(),
-    ),
-)
-
 users = Table(
     "users",
     metadata,

@@ -23,46 +23,9 @@ class SkillUpdate(BaseModel):
 
 router = APIRouter()
 
-
-# --- SQLAlchemy Endpoints (PostgreSQL) ---
-
-@router.post("/", response_model=schemas.Skill, status_code=201, tags=["Skills (PostgreSQL)"])
-def create_skill(skill: schemas.SkillCreate, db: Connection = Depends(get_db)):
-    db_skill = crud.get_skill_by_name(conn=db, name=skill.name)
-    if db_skill:
-        raise HTTPException(
-            status_code=400, detail=f"Skill with name '{skill.name}' already exists."
-        )
-    return crud.create_skill(conn=db, skill=skill)
-
-
-@router.get("/", response_model=List[schemas.Skill], tags=["Skills (PostgreSQL)"])
-def list_skills(skip: int = 0, limit: int = 100, db: Connection = Depends(get_db)):
-    skills = crud.get_all_skills(conn=db, skip=skip, limit=limit)
-    return skills
-
-
-@router.get("/{skill_name}", response_model=schemas.Skill, tags=["Skills (PostgreSQL)"])
-def read_skill(skill_name: str, db: Connection = Depends(get_db)):
-    db_skill = crud.get_skill_by_name(conn=db, name=skill_name)
-    if db_skill is None:
-        raise HTTPException(status_code=404, detail="Skill not found")
-    return db_skill
-
-
-@router.put("/{skill_name}", response_model=schemas.Skill, tags=["Skills (PostgreSQL)"])
-def update_skill_endpoint(
-    skill_name: str, skill: schemas.SkillUpdate, db: Connection = Depends(get_db)
-):
-    db_skill = crud.get_skill_by_name(conn=db, name=skill_name)
-    if db_skill is None:
-        raise HTTPException(status_code=404, detail="Skill not found")
-    return crud.update_skill(conn=db, name=skill_name, skill=skill)
-
-
 # --- Graph Endpoints (Neo4j) ---
 
-@router.post("/graph/skills", status_code=201, tags=["Skills (Neo4j)"])
+@router.post("/skills", status_code=201, tags=["Skills (Neo4j)"])
 def create_graph_skill(skill: GraphSkillCreate, driver: Driver = Depends(get_graph_db_driver)):
     """
     Create a new Skill node in the Neo4j graph database.
@@ -76,7 +39,7 @@ def create_graph_skill(skill: GraphSkillCreate, driver: Driver = Depends(get_gra
         return {"message": "Skill created in graph", "skill": new_skill["name"]}
 
 
-@router.get("/graph/skills", response_model=List[str], tags=["Skills (Neo4j)"])
+@router.get("/skills", response_model=List[str], tags=["Skills (Neo4j)"])
 def list_graph_skills(driver: Driver = Depends(get_graph_db_driver)):
     """
     Retrieve all skill names from the Neo4j graph database.
@@ -86,7 +49,7 @@ def list_graph_skills(driver: Driver = Depends(get_graph_db_driver)):
     return skills
 
 
-@router.get("/graph/skills/{skill_name}", response_model=str, tags=["Skills (Neo4j)"])
+@router.get("/skills/{skill_name}", response_model=str, tags=["Skills (Neo4j)"])
 def get_graph_skill(skill_name: str, driver: Driver = Depends(get_graph_db_driver)):
     """
     Retrieve a single skill by name from the graph.
@@ -98,7 +61,7 @@ def get_graph_skill(skill_name: str, driver: Driver = Depends(get_graph_db_drive
     return skill["name"]
 
 
-@router.put("/graph/skills/{skill_name}", response_model=str, tags=["Skills (Neo4j)"])
+@router.put("/skills/{skill_name}", response_model=str, tags=["Skills (Neo4j)"])
 def update_graph_skill(skill_name: str, skill_update: SkillUpdate, driver: Driver = Depends(get_graph_db_driver)):
     """
     Update a skill's name in the graph.
@@ -112,7 +75,7 @@ def update_graph_skill(skill_name: str, skill_update: SkillUpdate, driver: Drive
         return updated_skill["name"]
 
 
-@router.delete("/graph/skills/{skill_name}", status_code=200, tags=["Skills (Neo4j)"])
+@router.delete("/skills/{skill_name}", status_code=200, tags=["Skills (Neo4j)"])
 def delete_graph_skill(skill_name: str, driver: Driver = Depends(get_graph_db_driver)):
     """
     Delete a skill from the graph.
@@ -126,7 +89,7 @@ def delete_graph_skill(skill_name: str, driver: Driver = Depends(get_graph_db_dr
         return {"message": f"Skill '{skill_name}' deleted successfully"}
 
 
-@router.get("/graph/test", response_model=List[str], tags=["Skills (Neo4j)"])
+@router.get("/test", response_model=List[str], tags=["Skills (Neo4j)"])
 def get_skill_titles_from_graph(driver: Driver = Depends(get_graph_db_driver)):
     """
     A test endpoint to verify the connection to Neo4j and fetch skill names.
@@ -134,13 +97,13 @@ def get_skill_titles_from_graph(driver: Driver = Depends(get_graph_db_driver)):
     records, _, _ = driver.execute_query("MATCH (s:Skill) RETURN s.name AS name")
     return [record["name"] for record in records]
 
-@router.post("/graph/skills/{parent_skill}/dependency/{child_skill}", status_code=201, tags=["Skills (Neo4j)"])
+@router.post("/skills/{parent_skill}/dependency/{child_skill}", status_code=201, tags=["Skills (Neo4j)"])
 def create_skill_dependency(parent_skill: str, child_skill: str, driver: Driver = Depends(get_graph_db_driver)):
     with driver.session() as session:
         session.execute_write(graph_crud.add_skill_dependency, parent_skill, child_skill)
     return {"message": f"Dependency from {parent_skill} to {child_skill} created."}
 
-@router.get("/graph/skills/{skill_name}/dependencies", response_model=List[str], tags=["Skills (Neo4j)"])
+@router.get("/skills/{skill_name}/dependencies", response_model=List[str], tags=["Skills (Neo4j)"])
 def read_skill_dependencies(skill_name: str, driver: Driver = Depends(get_graph_db_driver)):
     """
     Retrieve all skills that the specified skill depends on.
@@ -149,7 +112,7 @@ def read_skill_dependencies(skill_name: str, driver: Driver = Depends(get_graph_
         dependencies = session.execute_read(graph_crud.get_skill_dependencies, skill_name)
     return dependencies
 
-@router.get("/graph/skills/{skill_name}/path", response_model=List[str], tags=["Skills (Neo4j)"])
+@router.get("/skills/{skill_name}/path", response_model=List[str], tags=["Skills (Neo4j)"])
 def get_consolidated_skill_path(skill_name: str, driver: Driver = Depends(get_graph_db_driver)):
     """
     Finds a single, consolidated learning path for the target skill.
