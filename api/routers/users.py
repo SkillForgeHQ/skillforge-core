@@ -79,3 +79,13 @@ def get_personalized_path(email: str, skill_name: str, driver: Driver = Depends(
             raise HTTPException(status_code=404, detail=f"No learning path found for skill '{skill_name}'.")
 
     return personalized_path
+
+@router.delete("/graph/users/{email}/skills/{skill_name}", status_code=200, tags=["Users (Neo4j)"])
+def remove_skill_from_user(email: str, skill_name: str, driver: Driver = Depends(get_graph_db_driver)):
+    """
+    Removes a skill from a user's profile by deleting the :HAS_SKILL relationship.
+    """
+    with driver.session() as session:
+        # You might add logic here to check if the user and skill exist first
+        session.execute_write(graph_crud.remove_user_skill, email, skill_name)
+    return {"message": f"Skill '{skill_name}' removed from user '{email}'"}

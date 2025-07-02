@@ -175,3 +175,14 @@ def get_user_skills(tx, email):
     """
     result = tx.run(query, email=email)
     return [record["skill_name"] for record in result]
+
+def remove_user_skill(tx, email, skill_name):
+    """
+    Deletes the :HAS_SKILL relationship between a User and a Skill.
+    """
+    query = """
+    MATCH (u:User {email: $email})-[r:HAS_SKILL]->(s:Skill {name: $skill_name})
+    DELETE r
+    """
+    tx.run(query, email=email, skill_name=skill_name)
+
