@@ -98,18 +98,20 @@ curl -X POST "http://127.0.0.1:8000/token" -H "Content-Type: application/x-www-f
 }
 ```
 
-### Users (PostgreSQL)
+### Users (PostgreSQL & Authentication)
+
+User registration and authentication are handled via PostgreSQL.
 
 #### Register User
 `POST /users/`
 
-Registers a new user in the PostgreSQL database.
+Registers a new user in the PostgreSQL database. This is typically the first step for a new user.
 
 **Path Parameters**
 
 None
 
-**Request Body**
+**Request Body** (`schemas.UserCreate`)
 ```json
 {
   "email": "newuser@example.com",
@@ -120,9 +122,9 @@ None
 
 | Parameter   | Type   | Description             |
 |:------------|:-------|:------------------------|
-| `email`     | string | The user's email address. |
+| `email`     | string | The user's email address (unique). |
 | `password`  | string | The user's password.      |
-| `full_name` | string | The user's full name.     |
+| `full_name` | string | The user's full name (optional). |
 
 **cURL Example**
 ```bash
@@ -137,7 +139,7 @@ curl -X 'POST' \
 }'
 ```
 
-**Successful Response (201 Created)**
+**Successful Response (201 Created)** (`schemas.User`)
 ```json
 {
   "id": 1,
@@ -147,33 +149,19 @@ curl -X 'POST' \
 }
 ```
 
-**Error Response (400 Bad Request)** If the email is already registered.
+**Error Response (400 Bad Request)**
 ```json
 {
   "detail": "Email already registered"
 }
 ```
 
-**Error Response (422 Validation Error)** If the request body is invalid (e.g., missing fields, invalid email format).
-```json
-{
-  "detail": [
-    {
-      "loc": [
-        "body",
-        "password"
-      ],
-      "msg": "field required",
-      "type": "value_error.missing"
-    }
-  ]
-}
-```
+**Error Response (422 Validation Error)** For invalid request body.
 
-#### Get Current User
+#### Get Current User Details
 `GET /users/me`
 
-Fetches the details of the currently authenticated user (based on the provided Bearer token).
+Fetches the details of the currently authenticated user (based on the Bearer token provided after login). This uses the `get_current_user` dependency which validates the token.
 
 **Path Parameters**
 
@@ -183,7 +171,11 @@ None
 
 None
 
-**cURL Example** (Replace `YOUR_ACCESS_TOKEN` with a valid token obtained from `/token`)
+**Authentication**
+
+Required: Bearer Token in `Authorization` header.
+
+**cURL Example** (Replace `YOUR_ACCESS_TOKEN` with a valid token)
 ```bash
 curl -X 'GET' \
   'http://127.0.0.1:8000/users/me' \
@@ -191,7 +183,7 @@ curl -X 'GET' \
   -H 'Authorization: Bearer YOUR_ACCESS_TOKEN'
 ```
 
-**Successful Response (200 OK)**
+**Successful Response (200 OK)** (`schemas.User`)
 ```json
 {
   "id": 1,
@@ -201,30 +193,27 @@ curl -X 'GET' \
 }
 ```
 
-**Error Response (401 Unauthorized)** If the token is missing, invalid, or expired.
-```json
-{
-  "detail": "Not authenticated"
-}
-```
+**Error Response (401 Unauthorized)**
 ```json
 {
   "detail": "Could not validate credentials"
 }
 ```
 
-### Users (Neo4j)
+### User Interactions with Skills (Neo4j)
 
-#### Create Graph User
+These endpoints manage how users interact with skills in the Neo4j graph database. All are prefixed with `/users`.
+
+#### Create User Node in Graph
 `POST /users/graph/users/{email}`
 
-Creates a new User node in the Neo4j graph database.
+Creates a new `:User` node in the Neo4j graph database. This is separate from PostgreSQL user registration and should typically be called after a user is registered in PostgreSQL if graph features are to be used.
 
 **Path Parameters**
 
 | Parameter | Type   | Description                                           |
 |:----------|:-------|:------------------------------------------------------|
-| `email`   | string | The email address, serving as the unique ID of the user. |
+| `email`   | string | The email address, serving as the unique ID of the user in the graph. |
 
 **Request Body**
 
@@ -246,39 +235,18 @@ curl -X 'POST' \
 }
 ```
 
-**Error Response (409 Conflict)** If the user already exists in the graph.
-```json
-{
-  "detail": "User with email 'test@example.com' already exists in graph."
-}
-```
+**Error Response (4xx)** If the user already exists or other graph errors occur.
 
-**Error Response (422 Validation Error)** If the email format is invalid.
-```json
-{
-  "detail": [
-    {
-      "loc": [
-        "path",
-        "email"
-      ],
-      "msg": "value is not a valid email address",
-      "type": "value_error.email"
-    }
-  ]
-}
-```
-
-#### Add Skill to User
+#### Add Skill to User (Link User to Skill)
 `POST /users/graph/users/{email}/skills/{skill_name}`
 
-Links a user to a skill they have acquired by creating a `[:HAS_SKILL]` relationship in the Neo4j graph.
+Links a user to a skill they have acquired by creating a `[:HAS_SKILL]` relationship in the Neo4j graph (e.g., `(:User {email: $email})-[:HAS_SKILL]->(:Skill {name: $skill_name})`).
 
 **Path Parameters**
 
 | Parameter    | Type   | Description                        |
 |:-------------|:-------|:-----------------------------------|
-| `email`      | string | The unique ID of the user.         |
+| `email`      | string | The unique ID (email) of the user. |
 | `skill_name` | string | The unique name of the skill.      |
 
 **Request Body**
@@ -300,45 +268,19 @@ curl -X 'POST' \
 }
 ```
 
-**Error Response (404 Not Found)** If the user or skill does not exist in the graph.
-```json
-{
-  "detail": "User 'nonexistent@example.com' not found in graph."
-}
-```
-```json
-{
-  "detail": "Skill 'NonExistentSkill' not found in graph."
-}
-```
+**Error Response (404 Not Found)** If the user or skill does not exist in the graph (actual behavior might depend on `graph_crud.add_user_skill` implementation if it checks existence).
 
-**Error Response (422 Validation Error)** If path parameters are invalid.
-```json
-{
-  "detail": [
-    {
-      "loc": [
-        "path",
-        "email"
-      ],
-      "msg": "value is not a valid email address",
-      "type": "value_error.email"
-    }
-  ]
-}
-```
-
-#### Get Personalized Learning Path
+#### Get Personalized Learning Path for User
 `GET /users/graph/users/{email}/learning-path/{skill_name}`
 
-Generates an ordered, consolidated learning path for a specific user towards a target skill. It traverses the skill graph to find all prerequisites and then filters out skills the user already possesses (based on `[:HAS_SKILL]` relationships).
+Generates an ordered, consolidated learning path for a specific user towards a target skill. It considers the skills the user already possesses (via `[:HAS_SKILL]` relationships) and excludes them from the path.
 
 **Path Parameters**
 
 | Parameter    | Type   | Description                                     |
 |:-------------|:-------|:------------------------------------------------|
-| `email`      | string | The unique ID of the user.                      |
-| `skill_name` | string | The unique name of the target skill to learn. |
+| `email`      | string | The unique ID (email) of the user.              |
+| `skill_name` | string | The unique name of the target skill to learn.   |
 
 **Query Parameters**
 
@@ -351,45 +293,19 @@ curl -X 'GET' \
   -H 'accept: application/json'
 ```
 
-**Successful Response (200 OK)** Returns a list of skill names in the recommended learning order.
+**Successful Response (200 OK)** (Returns `List[str]`)
 ```json
 [
   "Python Basics",
   "Object-Oriented Programming in Python"
 ]
 ```
-(Example: If "Advanced Python" depends on "Object-Oriented Programming in Python", which depends on "Python Basics", and the user already has "Python Basics", this would be the path. If the user had none, all three would be listed. If the user already had "Advanced Python", the path would be empty.)
+(Example: If "Advanced Python" depends on "Object-Oriented Programming in Python" and "Python Basics", and the user `test@example.com` already has "Python Basics", this path is returned. If the user had no relevant skills, the full path to "Advanced Python" would be listed.)
 
-**Error Response (404 Not Found)** If the user or target skill does not exist, or if no learning path is found (e.g., the target skill is foundational or has no prerequisites defined).
+**Error Response (404 Not Found)** If the user or target skill does not exist, or if no learning path is found.
 ```json
 {
-  "detail": "User 'nonexistent@example.com' not found in graph."
-}
-```
-```json
-{
-  "detail": "Skill 'NonExistentTargetSkill' not found in graph."
-}
-```
-```json
-{
-  "detail": "No learning path found for skill 'TargetSkill'. It may be a foundational skill or does not exist."
-}
-```
-
-**Error Response (422 Validation Error)** If path parameters are invalid.
-```json
-{
-  "detail": [
-    {
-      "loc": [
-        "path",
-        "email"
-      ],
-      "msg": "value is not a valid email address",
-      "type": "value_error.email"
-    }
-  ]
+  "detail": "No learning path found for skill 'TargetSkill'."
 }
 ```
 
@@ -402,7 +318,7 @@ Removes a `[:HAS_SKILL]` relationship between a user and a skill in the Neo4j gr
 
 | Parameter    | Type   | Description                        |
 |:-------------|:-------|:-----------------------------------|
-| `email`      | string | The unique ID of the user.         |
+| `email`      | string | The unique ID (email) of the user. |
 | `skill_name` | string | The unique name of the skill.      |
 
 **Request Body**
@@ -423,297 +339,22 @@ curl -X 'DELETE' \
 }
 ```
 
-**Error Response (404 Not Found)** If the user or skill does not exist in the graph, or the relationship doesn't exist. (Note: The current API might return 200 OK even if the relationship didn't exist if the user and skill nodes are present. More robust error handling could check for the relationship itself.)
-```json
-{
-  "detail": "User 'nonexistent@example.com' not found in graph."
-}
-```
-```json
-{
-  "detail": "Skill 'NonExistentSkill' not found in graph."
-}
-```
+**Error Response (404 Not Found)** If the user or skill (or the relationship) does not exist (actual behavior depends on `graph_crud.remove_user_skill`).
 
-**Error Response (422 Validation Error)** If path parameters are invalid.
-```json
-{
-  "detail": [
-    {
-      "loc": [
-        "path",
-        "email"
-      ],
-      "msg": "value is not a valid email address",
-      "type": "value_error.email"
-    }
-  ]
-}
-```
+### Skills Management (Neo4j)
 
-### Skills (PostgreSQL)
+These endpoints are for managing Skill nodes and their relationships (dependencies) directly in the Neo4j graph database. All endpoints here are prefixed with `/skills`.
 
-#### Create Skill (PostgreSQL)
+#### Create Skill
 `POST /skills/`
 
-Creates a new skill in the PostgreSQL database.
+Creates a new `:Skill` node in the Neo4j graph database.
 
 **Path Parameters**
 
 None
 
-**Request Body**
-```json
-{
-  "name": "PostgreSQL Basics",
-  "description": "Learn the fundamentals of PostgreSQL."
-}
-```
-
-| Parameter   | Type   | Description (Optional)             |
-|:------------|:-------|:-----------------------------------|
-| `name`      | string | The name of the skill.             |
-| `description`| string | A description of the skill.        |
-
-**cURL Example**
-```bash
-curl -X 'POST' \
-  'http://127.0.0.1:8000/skills/' \
-  -H 'accept: application/json' \
-  -H 'Content-Type: application/json' \
-  -d '{
-  "name": "PostgreSQL Basics",
-  "description": "Learn the fundamentals of PostgreSQL."
-}'
-```
-
-**Successful Response (201 Created)**
-```json
-{
-  "id": 1,
-  "name": "PostgreSQL Basics",
-  "description": "Learn the fundamentals of PostgreSQL."
-}
-```
-
-**Error Response (400 Bad Request)** If a skill with the same name already exists.
-```json
-{
-  "detail": "Skill with name 'PostgreSQL Basics' already exists."
-}
-```
-
-**Error Response (422 Validation Error)** If the request body is invalid.
-```json
-{
-  "detail": [
-    {
-      "loc": [
-        "body",
-        "name"
-      ],
-      "msg": "field required",
-      "type": "value_error.missing"
-    }
-  ]
-}
-```
-
-#### List Skills (PostgreSQL)
-`GET /skills/`
-
-Retrieves a list of skills from the PostgreSQL database, with optional pagination.
-
-**Path Parameters**
-
-None
-
-**Query Parameters**
-
-| Parameter | Type    | Description                               | Default |
-|:----------|:--------|:------------------------------------------|:--------|
-| `skip`    | integer | Number of records to skip for pagination. | 0       |
-| `limit`   | integer | Maximum number of records to return.      | 100     |
-
-**cURL Example**
-```bash
-curl -X 'GET' \
-  'http://127.0.0.1:8000/skills/?skip=0&limit=10' \
-  -H 'accept: application/json'
-```
-
-**Successful Response (200 OK)**
-```json
-[
-  {
-    "id": 1,
-    "name": "PostgreSQL Basics",
-    "description": "Learn the fundamentals of PostgreSQL."
-  },
-  {
-    "id": 2,
-    "name": "SQL Joins",
-    "description": "Master different types of SQL JOINs."
-  }
-]
-```
-
-**Error Response (422 Validation Error)** If query parameters are of invalid types.
-```json
-{
-  "detail": [
-    {
-      "loc": [
-        "query",
-        "skip"
-      ],
-      "msg": "value is not a valid integer",
-      "type": "type_error.integer"
-    }
-  ]
-}
-```
-
-#### Get Skill (PostgreSQL)
-`GET /skills/{skill_name}`
-
-Retrieves a specific skill by its name from the PostgreSQL database.
-
-**Path Parameters**
-
-| Parameter  | Type   | Description              |
-|:-----------|:-------|:-------------------------|
-| `skill_name`| string | The name of the skill.   |
-
-**cURL Example**
-```bash
-curl -X 'GET' \
-  'http://127.0.0.1:8000/skills/PostgreSQL%20Basics' \
-  -H 'accept: application/json'
-```
-
-**Successful Response (200 OK)**
-```json
-{
-  "id": 1,
-  "name": "PostgreSQL Basics",
-  "description": "Learn the fundamentals of PostgreSQL."
-}
-```
-
-**Error Response (404 Not Found)** If the skill with the given name does not exist.
-```json
-{
-  "detail": "Skill not found"
-}
-```
-
-**Error Response (422 Validation Error)** If `skill_name` is invalid (e.g., empty).
-```json
-{
-  "detail": [
-    {
-      "loc": [
-        "path",
-        "skill_name"
-      ],
-      "msg": "ensure this value has at least 1 characters",
-      "type": "value_error.any_str.min_length",
-      "ctx": {
-        "limit_value": 1
-      }
-    }
-  ]
-}
-```
-
-#### Update Skill (PostgreSQL)
-`PUT /skills/{skill_name}`
-
-Updates the details of an existing skill in the PostgreSQL database.
-
-**Path Parameters**
-
-| Parameter  | Type   | Description                     |
-|:-----------|:-------|:--------------------------------|
-| `skill_name`| string | The name of the skill to update. |
-
-**Request Body**
-```json
-{
-  "name": "Advanced PostgreSQL",
-  "description": "Deep dive into advanced PostgreSQL features."
-}
-```
-
-| Parameter   | Type   | Description (Optional)             |
-|:------------|:-------|:-----------------------------------|
-| `name`      | string | The new name for the skill.        |
-| `description`| string | The new description for the skill. |
-
-**cURL Example**
-```bash
-curl -X 'PUT' \
-  'http://127.0.0.1:8000/skills/PostgreSQL%20Basics' \
-  -H 'accept: application/json' \
-  -H 'Content-Type: application/json' \
-  -d '{
-  "name": "Advanced PostgreSQL",
-  "description": "Deep dive into advanced PostgreSQL features."
-}'
-```
-
-**Successful Response (200 OK)**
-```json
-{
-  "id": 1,
-  "name": "Advanced PostgreSQL",
-  "description": "Deep dive into advanced PostgreSQL features."
-}
-```
-
-**Error Response (404 Not Found)** If the skill to update is not found.
-```json
-{
-  "detail": "Skill not found"
-}
-```
-
-**Error Response (400 Bad Request)** If the new name in the request body already exists for another skill.
-```json
-{
-  "detail": "Skill with name 'Some Other Skill' already exists."
-}
-```
-
-**Error Response (422 Validation Error)** If path parameters or request body is invalid.
-```json
-{
-  "detail": [
-    {
-      "loc": [
-        "body",
-        "name"
-      ],
-      "msg": "field required",
-      "type": "value_error.missing"
-    }
-  ]
-}
-```
-
-### Skills (Neo4j)
-
-#### Create Graph Skill
-`POST /skills/graph/skills`
-
-Creates a new Skill node in the Neo4j graph database.
-
-**Path Parameters**
-
-None
-
-**Request Body**
+**Request Body** (`GraphSkillCreate`)
 ```json
 {
   "name": "New Skill Name"
@@ -727,7 +368,7 @@ None
 **cURL Example**
 ```bash
 curl -X 'POST' \
-  'http://127.0.0.1:8000/skills/graph/skills' \
+  'http://127.0.0.1:8000/skills/' \
   -H 'accept: application/json' \
   -H 'Content-Type: application/json' \
   -d '{
@@ -735,7 +376,7 @@ curl -X 'POST' \
 }'
 ```
 
-**Successful Response (201 Created)** (Note: The API code returns 201, but the example in the original README showed 200. Standard practice is 201 for resource creation.)
+**Successful Response (201 Created)**
 ```json
 {
   "message": "Skill created in graph",
@@ -746,28 +387,12 @@ curl -X 'POST' \
 **Error Response (409 Conflict)** If a skill with the same name already exists.
 ```json
 {
-  "detail": "Skill 'Data Analysis with Pandas' already exists in the graph"
+  "detail": "Skill already exists in the graph"
 }
 ```
 
-**Error Response (422 Validation Error)** If the request body is invalid.
-```json
-{
-  "detail": [
-    {
-      "loc": [
-        "body",
-        "name"
-      ],
-      "msg": "field required",
-      "type": "value_error.missing"
-    }
-  ]
-}
-```
-
-#### List Graph Skills
-`GET /skills/graph/skills`
+#### List All Skills
+`GET /skills/`
 
 Retrieves a list of all skill names from the Neo4j graph database.
 
@@ -782,11 +407,11 @@ None
 **cURL Example**
 ```bash
 curl -X 'GET' \
-  'http://127.0.0.1:8000/skills/graph/skills' \
+  'http://127.0.0.1:8000/skills/' \
   -H 'accept: application/json'
 ```
 
-**Successful Response (200 OK)** Returns a list of skill names.
+**Successful Response (200 OK)** (Returns `List[str]`)
 ```json
 [
   "Data Analysis with Pandas",
@@ -795,8 +420,8 @@ curl -X 'GET' \
 ]
 ```
 
-#### Get Graph Skill
-`GET /skills/graph/skills/{skill_name}`
+#### Get Skill by Name
+`GET /skills/{skill_name}`
 
 Retrieves a single skill by its name from the Neo4j graph database.
 
@@ -809,11 +434,11 @@ Retrieves a single skill by its name from the Neo4j graph database.
 **cURL Example**
 ```bash
 curl -X 'GET' \
-  'http://127.0.0.1:8000/skills/graph/skills/Data%20Analysis%20with%20Pandas' \
+  'http://127.0.0.1:8000/skills/Data%20Analysis%20with%20Pandas' \
   -H 'accept: application/json'
 ```
 
-**Successful Response (200 OK)** Returns the skill name if found.
+**Successful Response (200 OK)** (Returns `str` - the skill name)
 ```json
 "Data Analysis with Pandas"
 ```
@@ -825,27 +450,8 @@ curl -X 'GET' \
 }
 ```
 
-**Error Response (422 Validation Error)** If `skill_name` is invalid.
-```json
-{
-  "detail": [
-    {
-      "loc": [
-        "path",
-        "skill_name"
-      ],
-      "msg": "ensure this value has at least 1 characters",
-      "type": "value_error.any_str.min_length",
-      "ctx": {
-        "limit_value": 1
-      }
-    }
-  ]
-}
-```
-
-#### Update Graph Skill
-`PUT /skills/graph/skills/{skill_name}`
+#### Update Skill Name
+`PUT /skills/{skill_name}`
 
 Updates the name of an existing skill in the Neo4j graph database.
 
@@ -855,7 +461,7 @@ Updates the name of an existing skill in the Neo4j graph database.
 |:-----------|:-------|:------------------------------|
 | `skill_name`| string | The current name of the skill. |
 
-**Request Body**
+**Request Body** (`SkillUpdate`)
 ```json
 {
   "new_name": "Updated Skill Name"
@@ -869,7 +475,7 @@ Updates the name of an existing skill in the Neo4j graph database.
 **cURL Example**
 ```bash
 curl -X 'PUT' \
-  'http://127.0.0.1:8000/skills/graph/skills/Old%20Skill%20Name' \
+  'http://127.0.0.1:8000/skills/Old%20Skill%20Name' \
   -H 'accept: application/json' \
   -H 'Content-Type: application/json' \
   -d '{
@@ -877,7 +483,7 @@ curl -X 'PUT' \
 }'
 ```
 
-**Successful Response (200 OK)** Returns the new skill name.
+**Successful Response (200 OK)** (Returns `str` - the new skill name)
 ```json
 "Updated Skill Name"
 ```
@@ -888,32 +494,10 @@ curl -X 'PUT' \
   "detail": "Skill 'Old Skill Name' not found"
 }
 ```
+**Error Response (409 Conflict)** If a skill with `new_name` already exists (based on `graph_crud.update_skill` logic, which should prevent this).
 
-**Error Response (409 Conflict)** If a skill with `new_name` already exists.
-```json
-{
-  "detail": "Skill with name 'Updated Skill Name' already exists."
-}
-```
-
-**Error Response (422 Validation Error)** If path parameters or request body is invalid.
-```json
-{
-  "detail": [
-    {
-      "loc": [
-        "body",
-        "new_name"
-      ],
-      "msg": "field required",
-      "type": "value_error.missing"
-    }
-  ]
-}
-```
-
-#### Delete Graph Skill
-`DELETE /skills/graph/skills/{skill_name}`
+#### Delete Skill
+`DELETE /skills/{skill_name}`
 
 Deletes a skill node and its relationships from the Neo4j graph database.
 
@@ -930,7 +514,7 @@ None
 **cURL Example**
 ```bash
 curl -X 'DELETE' \
-  'http://127.0.0.1:8000/skills/graph/skills/Skill%20To%20Delete' \
+  'http://127.0.0.1:8000/skills/Skill%20To%20Delete' \
   -H 'accept: application/json'
 ```
 
@@ -948,29 +532,10 @@ curl -X 'DELETE' \
 }
 ```
 
-**Error Response (422 Validation Error)** If `skill_name` is invalid.
-```json
-{
-  "detail": [
-    {
-      "loc": [
-        "path",
-        "skill_name"
-      ],
-      "msg": "ensure this value has at least 1 characters",
-      "type": "value_error.any_str.min_length",
-      "ctx": {
-        "limit_value": 1
-      }
-    }
-  ]
-}
-```
-
 #### Create Skill Dependency
-`POST /skills/graph/skills/{parent_skill}/dependency/{child_skill}`
+`POST /skills/{parent_skill}/dependency/{child_skill}`
 
-Creates a `[:DEPENDS_ON]` relationship from a parent skill to a child skill in the Neo4j graph, signifying that the child skill is a prerequisite for the parent skill.
+Creates a `[:DEPENDS_ON]` relationship from a `parent_skill` to a `child_skill` in the Neo4j graph. This signifies that the `child_skill` is a prerequisite for the `parent_skill`.
 
 **Path Parameters**
 
@@ -986,66 +551,30 @@ None
 **cURL Example**
 ```bash
 curl -X 'POST' \
-  'http://127.0.0.1:8000/skills/graph/skills/Advanced%20Data%20Analysis/dependency/Data%20Analysis%20with%20Pandas' \
+  'http://127.0.0.1:8000/skills/Advanced%20Data%20Analysis/dependency/Data%20Analysis%20with%20Pandas' \
   -H 'accept: application/json' \
   -d ''
 ```
 
-**Successful Response (201 Created)** (Note: The API code returns 201, which is appropriate. The original README example showed 200.)
+**Successful Response (201 Created)**
 ```json
 {
   "message": "Dependency from Advanced Data Analysis to Data Analysis with Pandas created."
 }
 ```
 
-**Error Response (404 Not Found)** If either the parent or child skill does not exist in the graph.
-```json
-{
-  "detail": "Parent skill 'NonExistentParentSkill' not found."
-}
-```
-```json
-{
-  "detail": "Child skill 'NonExistentChildSkill' not found."
-}
-```
-
-**Error Response (409 Conflict)** If the dependency already exists.
-```json
-{
-  "detail": "Dependency from 'ParentSkill' to 'ChildSkill' already exists."
-}
-```
-
-**Error Response (422 Validation Error)** If path parameters are invalid.
-```json
-{
-  "detail": [
-    {
-      "loc": [
-        "path",
-        "parent_skill"
-      ],
-      "msg": "ensure this value has at least 1 characters",
-      "type": "value_error.any_str.min_length",
-      "ctx": {
-        "limit_value": 1
-      }
-    }
-  ]
-}
-```
+**Error Response (404 Not Found)** If either the parent or child skill does not exist (actual behavior depends on `graph_crud.add_skill_dependency`).
 
 #### Get Skill Dependencies (Direct Prerequisites)
-`GET /skills/graph/skills/{skill_name}/dependencies`
+`GET /skills/{skill_name}/dependencies`
 
-Retrieves all skills that the specified skill directly depends on (i.e., its direct prerequisites or children in the dependency tree).
+Retrieves all skills that the specified skill directly depends on (i.e., its direct prerequisites).
 
 **Path Parameters**
 
 | Parameter  | Type   | Description                       |
 |:-----------|:-------|:----------------------------------|
-| `skill_name`| string | The name of the parent skill.     |
+| `skill_name`| string | The name of the skill.            |
 
 **Query Parameters**
 
@@ -1054,47 +583,22 @@ None
 **cURL Example**
 ```bash
 curl -X 'GET' \
-  'http://127.0.0.1:8000/skills/graph/skills/Advanced%20Data%20Analysis/dependencies' \
+  'http://127.0.0.1:8000/skills/Advanced%20Data%20Analysis/dependencies' \
   -H 'accept: application/json'
 ```
 
-**Successful Response (200 OK)** Returns a list of skill names that are direct prerequisites.
+**Successful Response (200 OK)** (Returns `List[str]`)
 ```json
 [
   "Data Analysis with Pandas",
   "Statistics Basics"
 ]
 ```
-(Example: If "Advanced Data Analysis" directly depends on "Data Analysis with Pandas" and "Statistics Basics".)
 
 **Error Response (404 Not Found)** If the specified skill `skill_name` does not exist.
-```json
-{
-  "detail": "Skill 'NonExistentSkill' not found."
-}
-```
 
-**Error Response (422 Validation Error)** If `skill_name` is invalid.
-```json
-{
-  "detail": [
-    {
-      "loc": [
-        "path",
-        "skill_name"
-      ],
-      "msg": "ensure this value has at least 1 characters",
-      "type": "value_error.any_str.min_length",
-      "ctx": {
-        "limit_value": 1
-      }
-    }
-  ]
-}
-```
-
-#### Get Consolidated Skill Learning Path (Not User-Specific)
-`GET /skills/graph/skills/{skill_name}/path`
+#### Get Consolidated Skill Learning Path (Generic)
+`GET /skills/{skill_name}/path`
 
 Finds a single, consolidated learning path for a target skill from the Neo4j graph. This path lists all prerequisite skills in a recommended learning order, irrespective of any specific user.
 
@@ -1111,11 +615,11 @@ None
 **cURL Example**
 ```bash
 curl -X 'GET' \
-  'http://127.0.0.1:8000/skills/graph/skills/Advanced%20Data%20Analysis/path' \
+  'http://127.0.0.1:8000/skills/Advanced%20Data%20Analysis/path' \
   -H 'accept: application/json'
 ```
 
-**Successful Response (200 OK)** Returns a list of skill names in the recommended learning order.
+**Successful Response (200 OK)** (Returns `List[str]`)
 ```json
 [
   "Python Basics",
@@ -1124,38 +628,18 @@ curl -X 'GET' \
   "Data Analysis with Pandas"
 ]
 ```
-(Example: If "Advanced Data Analysis" has the above skills as its complete prerequisite chain.)
 
-**Error Response (404 Not Found)** If no learning path is found for the skill (e.g., it's a foundational skill with no prerequisites or does not exist).
+**Error Response (404 Not Found)** If no learning path is found for the skill.
 ```json
 {
   "detail": "No learning path found for skill 'TargetSkill'. It may be a foundational skill or does not exist."
 }
 ```
 
-**Error Response (422 Validation Error)** If `skill_name` is invalid.
-```json
-{
-  "detail": [
-    {
-      "loc": [
-        "path",
-        "skill_name"
-      ],
-      "msg": "ensure this value has at least 1 characters",
-      "type": "value_error.any_str.min_length",
-      "ctx": {
-        "limit_value": 1
-      }
-    }
-  ]
-}
-```
+#### Test Neo4j Connection
+`GET /skills/test`
 
-#### Test Neo4j Connection and Fetch Skill Titles
-`GET /skills/graph/test`
-
-A test endpoint to verify the connection to Neo4j and fetch all skill names directly via a Cypher query. Useful for debugging.
+A test endpoint to verify the connection to Neo4j and fetch all skill names directly via a Cypher query.
 
 **Path Parameters**
 
