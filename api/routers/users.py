@@ -37,6 +37,7 @@ def read_users_me(current_user: schemas.User = Depends(get_current_user)):
     """
     return current_user
 
+
 @router.post("/graph/users/{email}", status_code=201, tags=["Users (Neo4j)"])
 def create_graph_user(email: str, driver: Driver = Depends(get_graph_db_driver)):
     """
@@ -47,8 +48,12 @@ def create_graph_user(email: str, driver: Driver = Depends(get_graph_db_driver))
     return {"message": "User created in graph", "email": user_email}
 
 
-@router.post("/graph/users/{email}/skills/{skill_name}", status_code=201, tags=["Users (Neo4j)"])
-def create_user_skill_relationship(email: str, skill_name: str, driver: Driver = Depends(get_graph_db_driver)):
+@router.post(
+    "/graph/users/{email}/skills/{skill_name}", status_code=201, tags=["Users (Neo4j)"]
+)
+def create_user_skill_relationship(
+    email: str, skill_name: str, driver: Driver = Depends(get_graph_db_driver)
+):
     """
     Link a user to a skill they already have.
     """
@@ -57,15 +62,24 @@ def create_user_skill_relationship(email: str, skill_name: str, driver: Driver =
         session.execute_write(graph_crud.add_user_skill, email, skill_name)
     return {"message": f"User '{email}' now has skill '{skill_name}'"}
 
-@router.get("/graph/users/{email}/learning-path/{skill_name}", response_model=List[str], tags=["Users (Neo4j)"])
-def get_personalized_path(email: str, skill_name: str, driver: Driver = Depends(get_graph_db_driver)):
+
+@router.get(
+    "/graph/users/{email}/learning-path/{skill_name}",
+    response_model=List[str],
+    tags=["Users (Neo4j)"],
+)
+def get_personalized_path(
+    email: str, skill_name: str, driver: Driver = Depends(get_graph_db_driver)
+):
     """
     Generates a personalized learning path for a user,
     excluding skills they already possess.
     """
     with driver.session() as session:
         # 1. Get the complete, ideal learning path
-        full_path = session.execute_read(graph_crud.get_consolidated_learning_path, skill_name)
+        full_path = session.execute_read(
+            graph_crud.get_consolidated_learning_path, skill_name
+        )
 
         # 2. Get the skills the user already has
         user_skills = session.execute_read(graph_crud.get_user_skills, email)
@@ -76,12 +90,19 @@ def get_personalized_path(email: str, skill_name: str, driver: Driver = Depends(
     personalized_path = [skill for skill in full_path if skill not in user_skills_set]
 
     if not full_path:
-            raise HTTPException(status_code=404, detail=f"No learning path found for skill '{skill_name}'.")
+        raise HTTPException(
+            status_code=404, detail=f"No learning path found for skill '{skill_name}'."
+        )
 
     return personalized_path
 
-@router.delete("/graph/users/{email}/skills/{skill_name}", status_code=200, tags=["Users (Neo4j)"])
-def remove_skill_from_user(email: str, skill_name: str, driver: Driver = Depends(get_graph_db_driver)):
+
+@router.delete(
+    "/graph/users/{email}/skills/{skill_name}", status_code=200, tags=["Users (Neo4j)"]
+)
+def remove_skill_from_user(
+    email: str, skill_name: str, driver: Driver = Depends(get_graph_db_driver)
+):
     """
     Removes a skill from a user's profile by deleting the :HAS_SKILL relationship.
     """

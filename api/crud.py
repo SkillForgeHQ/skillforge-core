@@ -7,6 +7,7 @@ from .security import get_password_hash
 
 # We use the SQLAlchemy table object defined in database.py
 
+
 def get_user_by_email(conn: Connection, email: str):
     """Fetches a single user by their email address."""
     query = select(database.users).where(database.users.c.email == email)

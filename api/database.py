@@ -5,7 +5,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 # --- This block now correctly loads the .env file ---
-env_path = Path(__file__).parent.parent / '.env'
+env_path = Path(__file__).parent.parent / ".env"
 load_dotenv(dotenv_path=env_path)
 # --- End of fix ---
 
@@ -61,9 +61,14 @@ NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD")
 if not NEO4J_URI:
     raise ValueError("Missing NEO4J_URI environment variable. Cannot connect to Neo4j.")
 if not NEO4J_USERNAME:
-    raise ValueError("Missing NEO4J_USERNAME environment variable. Cannot connect to Neo4j.")
+    raise ValueError(
+        "Missing NEO4J_USERNAME environment variable. Cannot connect to Neo4j."
+    )
 if not NEO4J_PASSWORD:
-    raise ValueError("Missing NEO4J_PASSWORD environment variable. Cannot connect to Neo4j.")
+    raise ValueError(
+        "Missing NEO4J_PASSWORD environment variable. Cannot connect to Neo4j."
+    )
+
 
 # This class will manage the driver instance
 class GraphDatabaseManager:
@@ -72,7 +77,9 @@ class GraphDatabaseManager:
 
     def connect(self):
         """Establishes the connection to the Neo4j database."""
-        self.driver = GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USERNAME, NEO4J_PASSWORD))
+        self.driver = GraphDatabase.driver(
+            NEO4J_URI, auth=(NEO4J_USERNAME, NEO4J_PASSWORD)
+        )
 
     def close(self):
         """Closes the connection."""

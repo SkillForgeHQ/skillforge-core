@@ -34,6 +34,7 @@ def get_skill_by_name(tx, skill_name):
     result = tx.run(query, skill_name=skill_name)
     return result.single()
 
+
 def update_skill(tx, old_name, new_name):
     """
     Updates the name of an existing skill node.
@@ -46,7 +47,9 @@ def update_skill(tx, old_name, new_name):
     result = tx.run(query, old_name=old_name, new_name=new_name)
     return result.single()
 
+
 # --- Delete Operations ---
+
 
 def delete_skill(tx, skill_name):
     """
@@ -57,6 +60,7 @@ def delete_skill(tx, skill_name):
     query = "MATCH (s:Skill {name: $skill_name}) DETACH DELETE s"
     tx.run(query, skill_name=skill_name)
 
+
 def add_skill_dependency(tx, parent_skill_name, child_skill_name):
     """
     Creates a DEPENDS_ON relationship from a parent skill to a child skill.
@@ -66,9 +70,13 @@ def add_skill_dependency(tx, parent_skill_name, child_skill_name):
         "MATCH (child:Skill {name: $child_skill_name}) "
         "MERGE (parent)-[:DEPENDS_ON]->(child)"
     )
-    tx.run(query, parent_skill_name=parent_skill_name, child_skill_name=child_skill_name)
+    tx.run(
+        query, parent_skill_name=parent_skill_name, child_skill_name=child_skill_name
+    )
+
 
 # In api/graph_crud.py
+
 
 def get_skill_dependencies(tx, skill_name):
     """
@@ -81,7 +89,9 @@ def get_skill_dependencies(tx, skill_name):
     result = tx.run(query, skill_name=skill_name)
     return [record["dependency_name"] for record in result]
 
+
 # In api/graph_crud.py
+
 
 def get_consolidated_learning_path(tx, skill_name):
     """
@@ -110,6 +120,7 @@ def get_consolidated_learning_path(tx, skill_name):
     record = result.single()
     return record["path"] if record else []
 
+
 def create_user_node(tx, email):
     """
     Creates a :User node in the graph with a unique email.
@@ -131,6 +142,7 @@ def add_user_skill(tx, email, skill_name):
     """
     tx.run(query, email=email, skill_name=skill_name)
 
+
 def get_user_skills(tx, email):
     """
     Retrieves a list of all skills a user has.
@@ -141,6 +153,7 @@ def get_user_skills(tx, email):
     """
     result = tx.run(query, email=email)
     return [record["skill_name"] for record in result]
+
 
 def create_user_node(tx, email):
     """
@@ -176,6 +189,7 @@ def get_user_skills(tx, email):
     result = tx.run(query, email=email)
     return [record["skill_name"] for record in result]
 
+
 def remove_user_skill(tx, email, skill_name):
     """
     Deletes the :HAS_SKILL relationship between a User and a Skill.
@@ -185,4 +199,3 @@ def remove_user_skill(tx, email, skill_name):
     DELETE r
     """
     tx.run(query, email=email, skill_name=skill_name)
-
