@@ -22,3 +22,7 @@ class ExtractedSkills(BaseModel):
 class SkillMatch(BaseModel):
     is_duplicate: bool = Field(description="A boolean flag indicating if the candidate skill is a duplicate of an existing skill.")
     existing_skill_name: Optional[str] = Field(description="If is_duplicate is true, this is the name of the existing skill that matches.")
+
+class UserPasswordChange(BaseModel):
+    current_password: str
+    new_password: str

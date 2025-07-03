@@ -3,10 +3,11 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.engine import Connection
 from neo4j import Driver
-from .. import crud, schemas, graph_crud
+from .. import crud, schemas, graph_crud, security
 from ..database import get_db, get_graph_db_driver
-from .auth import get_current_user
+from .auth import get_current_active_user
 from typing import List
+from ..routers.auth import get_current_user
 
 router = APIRouter(
     prefix="/users",
@@ -134,3 +135,28 @@ def remove_skill_from_user(
         # You might add logic here to check if the user and skill exist first
         session.execute_write(graph_crud.remove_user_skill, email, skill_name)
     return {"message": f"Skill '{skill_name}' removed from user '{email}'"}
+
+@router.put("/users/me/password", status_code=status.HTTP_204_NO_CONTENT, tags=["Users"])
+def change_current_user_password(
+    password_data: schemas.UserPasswordChange,
+    current_user: schemas.User = Depends(get_current_active_user),
+    db: Connection = Depends(get_db)
+):
+    """
+    Allows an authenticated user to change their own password.
+    """
+    # 1. Verify the user's current password
+    user_in_db = crud.get_user(db, email=current_user.email)
+    if not security.verify_password(password_data.current_password, user_in_db.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Incorrect current password",
+        )
+
+    # 2. Hash the new password
+    new_hashed_password = security.get_password_hash(password_data.new_password)
+
+    # 3. Update the password in the database
+    crud.update_user_password(db, email=current_user.email, new_hashed_password=new_hashed_password)
+
+    return
