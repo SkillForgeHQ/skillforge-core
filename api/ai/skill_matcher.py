@@ -43,12 +43,19 @@ model = ChatOpenAI(temperature=0, model="gpt-4o-mini")
 # 4. Create the Chain
 skill_matcher_chain = prompt | model | parser
 
+
 # 5. Convenience function to invoke the chain
-async def find_skill_match(candidate_skill: str, existing_skills: List[str]) -> SkillMatch:
+async def find_skill_match(
+    candidate_skill: str, existing_skills: List[str]
+) -> SkillMatch:
     """
     Invokes the skill matcher chain to find a semantic duplicate for the candidate skill.
     """
-    return await skill_matcher_chain.ainvoke({
-        "candidate_skill": candidate_skill,
-        "existing_skills": ", ".join(existing_skills) # Pass the list as a simple comma-separated string
-    })
+    return await skill_matcher_chain.ainvoke(
+        {
+            "candidate_skill": candidate_skill,
+            "existing_skills": ", ".join(
+                existing_skills
+            ),  # Pass the list as a simple comma-separated string
+        }
+    )

@@ -181,7 +181,9 @@ def set_user_skill_mastery(tx, email: str, skill_name: str, mastery_level: int):
 
     RETURN u.email AS email, r.level AS level, s.name AS skill
     """
-    result = tx.run(query, email=email, skill_name=skill_name, mastery_level=mastery_level)
+    result = tx.run(
+        query, email=email, skill_name=skill_name, mastery_level=mastery_level
+    )
     return result.single()
 
 
@@ -208,7 +210,9 @@ def remove_user_skill(tx, email, skill_name):
     tx.run(query, email=email, skill_name=skill_name)
 
 
-def add_mastery_level_to_skill(tx, skill_name: str, level: int, mastery_name: str, description: str):
+def add_mastery_level_to_skill(
+    tx, skill_name: str, level: int, mastery_name: str, description: str
+):
     """
     Creates a :Mastery node and links it to an existing :Skill node.
     """
@@ -218,5 +222,11 @@ def add_mastery_level_to_skill(tx, skill_name: str, level: int, mastery_name: st
     MERGE (s)-[:HAS_MASTERY]->(m)
     RETURN s.name AS skill, m.name AS mastery_name
     """
-    result = tx.run(query, skill_name=skill_name, level=level, mastery_name=mastery_name, description=description)
+    result = tx.run(
+        query,
+        skill_name=skill_name,
+        level=level,
+        mastery_name=mastery_name,
+        description=description,
+    )
     return result.single()

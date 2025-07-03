@@ -12,11 +12,14 @@ NEO4J_URI = os.getenv("NEO4J_URI", "bolt://localhost:7687")
 NEO4J_USER = os.getenv("NEO4J_USER", "neo4j")
 NEO4J_PASSWORD = os.getenv("NEO4J_PASSWORD", "password")
 
+
 def get_graph_db_driver() -> Driver:
     """Returns the Neo4j driver."""
     return GraphDatabase.driver(NEO4J_URI, auth=(NEO4J_USER, NEO4J_PASSWORD))
 
+
 # --- Migration Logic ---
+
 
 def ensure_default_mastery_on_skills(tx):
     """

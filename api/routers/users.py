@@ -5,7 +5,6 @@ from sqlalchemy.engine import Connection
 from neo4j import Driver
 from .. import crud, schemas, graph_crud, security
 from ..database import get_db, get_graph_db_driver
-from .auth import get_current_active_user
 from typing import List
 from ..routers.auth import get_current_user
 
@@ -53,7 +52,7 @@ def create_graph_user(email: str, driver: Driver = Depends(get_graph_db_driver))
 def set_skill_mastery_for_user(
     email: str,
     mastery_info: schemas.UserSkillMasteryCreate,
-    driver: Driver = Depends(get_graph_db_driver)
+    driver: Driver = Depends(get_graph_db_driver),
 ):
     """
     Sets or updates a user's mastery level for a specific skill.
@@ -61,26 +60,32 @@ def set_skill_mastery_for_user(
     """
     with driver.session() as session:
         # Check if user and skill exist
-        user_node = session.execute_read(graph_crud.get_user_by_email, email) # Assuming you create a graph_crud version for this
+        user_node = session.execute_read(
+            graph_crud.get_user_by_email, email
+        )  # Assuming you create a graph_crud version for this
         if not user_node:
             raise HTTPException(status_code=404, detail=f"User '{email}' not found.")
 
-        skill_node = session.execute_read(graph_crud.get_skill_by_name, mastery_info.skill_name)
+        skill_node = session.execute_read(
+            graph_crud.get_skill_by_name, mastery_info.skill_name
+        )
         if not skill_node:
-            raise HTTPException(status_code=404, detail=f"Skill '{mastery_info.skill_name}' not found.")
+            raise HTTPException(
+                status_code=404, detail=f"Skill '{mastery_info.skill_name}' not found."
+            )
 
         # Set the mastery level
         result = session.execute_write(
             graph_crud.set_user_skill_mastery,
             email,
             mastery_info.skill_name,
-            mastery_info.mastery_level
+            mastery_info.mastery_level,
         )
 
         if not result:
             raise HTTPException(
                 status_code=400,
-                detail=f"Failed to set mastery. Ensure mastery level {mastery_info.mastery_level} exists for skill '{mastery_info.skill_name}'."
+                detail=f"Failed to set mastery. Ensure mastery level {mastery_info.mastery_level} exists for skill '{mastery_info.skill_name}'.",
             )
 
     return {
@@ -136,18 +141,30 @@ def remove_skill_from_user(
         session.execute_write(graph_crud.remove_user_skill, email, skill_name)
     return {"message": f"Skill '{skill_name}' removed from user '{email}'"}
 
-@router.put("/users/me/password", status_code=status.HTTP_204_NO_CONTENT, tags=["Users"])
+
+@router.put(
+    "/users/me/password", status_code=status.HTTP_204_NO_CONTENT, tags=["Users"]
+)
 def change_current_user_password(
     password_data: schemas.UserPasswordChange,
-    current_user: schemas.User = Depends(get_current_active_user),
-    db: Connection = Depends(get_db)
+    current_user: schemas.User = Depends(get_current_user),  # <-- Corrected name here
+    db: Connection = Depends(get_db),
 ):
     """
     Allows an authenticated user to change their own password.
     """
     # 1. Verify the user's current password
-    user_in_db = crud.get_user(db, email=current_user.email)
-    if not security.verify_password(password_data.current_password, user_in_db.hashed_password):
+    # Note: We need to get the user from the DB to access the hashed_password
+    user_in_db = crud.get_user_by_email(db, email=current_user.email)
+    if not user_in_db:
+        # This should theoretically not happen if the token is valid
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
+
+    if not security.verify_password(
+        password_data.current_password, user_in_db.hashed_password
+    ):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Incorrect current password",
@@ -157,6 +174,8 @@ def change_current_user_password(
     new_hashed_password = security.get_password_hash(password_data.new_password)
 
     # 3. Update the password in the database
-    crud.update_user_password(db, email=current_user.email, new_hashed_password=new_hashed_password)
+    crud.update_user_password(
+        db, email=current_user.email, new_hashed_password=new_hashed_password
+    )
 
     return

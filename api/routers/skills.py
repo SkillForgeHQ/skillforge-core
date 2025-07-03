@@ -166,7 +166,7 @@ def get_consolidated_skill_path(
 def add_mastery_to_skill(
     skill_name: str,
     mastery: schemas.MasteryCreate,
-    driver: Driver = Depends(get_graph_db_driver)
+    driver: Driver = Depends(get_graph_db_driver),
 ):
     """
     Adds a mastery level to a specific skill.
@@ -175,7 +175,9 @@ def add_mastery_to_skill(
         # First, check if the skill exists
         skill_node = session.execute_read(graph_crud.get_skill_by_name, skill_name)
         if not skill_node:
-            raise HTTPException(status_code=404, detail=f"Skill '{skill_name}' not found.")
+            raise HTTPException(
+                status_code=404, detail=f"Skill '{skill_name}' not found."
+            )
 
         # Create the mastery node and the relationship
         result = session.execute_write(
@@ -183,11 +185,11 @@ def add_mastery_to_skill(
             skill_name,
             mastery.level,
             mastery.name,
-            mastery.description
+            mastery.description,
         )
         if not result:
-             raise HTTPException(status_code=500, detail="Failed to create mastery level.")
+            raise HTTPException(
+                status_code=500, detail="Failed to create mastery level."
+            )
 
-    return {
-        "message": f"Mastery level '{mastery.name}' added to skill '{skill_name}'"
-    }
+    return {"message": f"Mastery level '{mastery.name}' added to skill '{skill_name}'"}
