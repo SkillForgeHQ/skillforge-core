@@ -58,7 +58,11 @@ jobs:
     # The DB Init step only needs the PostgreSQL URL
     - name: Run Database Initialization
       env:
+        # Provide ALL database credentials needed by api/database.py
         DATABASE_URL: "postgresql+psycopg://testuser:testpassword@localhost:5432/testdb"
+        NEO4J_URI: "neo4j://localhost:7687"
+        NEO4J_USERNAME: "neo4j"
+        NEO4J_PASSWORD: "testpassword"
       run: python init_db.py
 
     - name: Run tests
