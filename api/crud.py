@@ -2,7 +2,7 @@
 
 from sqlalchemy import select, insert, update
 from sqlalchemy.engine import Connection
-from . import database, schemas, models
+from . import database, schemas, security
 from .security import get_password_hash
 
 # We use the SQLAlchemy table object defined in database.py
@@ -33,18 +33,16 @@ def create_user(conn: Connection, user: schemas.UserCreate):
     conn.commit()  # Commit the transaction
     return created_user
 
+
 def update_user_password(db: Connection, user_email: str, new_hashed_password: str):
     """
     Updates a user's password in the database.
     """
+
     stmt = (
-        update(models.users)
-        .where(models.users.c.email == user_email)
+        update(database.users)
+        .where(database.users.c.email == user_email)
         .values(hashed_password=new_hashed_password)
     )
     db.execute(stmt)
-    # The following line is needed for SQLAlchemy < 2.0 to commit the change
-    # For SQLAlchemy 2.0+, the execute call with a connection is auto-committed.
-    # To be safe across versions, we can include it.
-    if hasattr(db, 'commit'):
-        db.commit()
+    db.commit()
