@@ -1,6 +1,10 @@
 # skillforge-core
 The core skills mapping engine for SkillForge
 
+# SkillForge Core API
+
+![SkillForge CI](https://github.com/SkillForgeHQ/skillforge-core/actions/workflows/ci.yml/badge.svg)
+
 Role Playing Games, like Skyrim, are really fun to play.  This is somewhat funny, because a great deal of 
 what a player does in an RPG is known as "grinding".  Grinding is the process of completing boring tasks
 over and over again in order to "level up".  If most of what a player does in an RPG is "grind", why is it fun at all?

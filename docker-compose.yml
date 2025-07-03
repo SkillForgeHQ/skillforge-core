@@ -1,30 +1,57 @@
 # docker-compose.yml
 
 services:
-  # This defines our PostgreSQL database service
-  db:
-    image: postgres:16.3-alpine # Use a specific, lightweight version of Postgres for consistency
-    container_name: skillforge-db # A custom name for easy identification
-    restart: always # Ensures the container restarts automatically if it crashes or the system reboots
-
-    # Environment variables to configure the Postgres instance
-    # IMPORTANT: For production, use Docker secrets or a .env file. This is acceptable for local dev.
+  api:
+    build: .
+    ports:
+      - "8000:8000"
     environment:
-      POSTGRES_USER: ${DB_USER}
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
-      POSTGRES_DB: ${DB_NAME}
+      DATABASE_URL: ${DATABASE_URL}
+      NEO4J_URI: ${NEO4J_URI}
+      NEO4J_USERNAME: ${NEO4J_USERNAME}
+      NEO4J_PASSWORD: ${NEO4J_PASSWORD}
+      SECRET_KEY: ${SECRET_KEY}
+      ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES}
+    volumes:
+      - ./api:/app/api
+    command: uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
+    depends_on:
+      postgres:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
 
-    # Maps port 5432 inside the container to port 5432 on your host machine
-    # This allows your Python script (running on the host) to connect to the database
+  postgres:
+    image: "postgres:15-alpine"
     ports:
       - "5432:5432"
-
-    # Mounts a named volume to persist database data
-    # This is the most critical part for data persistence
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
-# Defines the named volume used by the 'db' service
+  neo4j:
+    image: "neo4j:5-community"
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    environment:
+      NEO4J_AUTH: ${NEO4J_AUTH}
+    volumes:
+      - neo4j_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:7474 || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
 volumes:
   postgres_data:
-    driver: local # Specifies the default local driver for the volume
+  neo4j_data:

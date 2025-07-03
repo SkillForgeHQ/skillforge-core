@@ -26,10 +26,7 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.dialects.postgresql import UUID, ARRAY
 from neo4j import GraphDatabase, Driver
 
-DATABASE_URL = (
-    f"postgresql+psycopg://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}@"
-    f"{os.getenv('DB_HOST')}:{os.getenv('DB_PORT')}/{os.getenv('DB_NAME')}"
-)
+DATABASE_URL = os.getenv("DATABASE_URL")
 
 engine = create_engine(DATABASE_URL)
 metadata = MetaData()
