@@ -7,10 +7,9 @@ on:
     branches: [ "main" ]
 
 jobs:
-  test: # Renamed job to 'test' for clarity
+  test:
     runs-on: ubuntu-latest
 
-    # This 'services' block starts database containers before the job runs
     services:
       postgres:
         image: postgres:15-alpine
@@ -19,8 +18,7 @@ jobs:
           POSTGRES_PASSWORD: testpassword
           POSTGRES_DB: testdb
         ports:
-          - 5432:5432 # Map port to the runner
-        # Healthcheck to wait until postgres is ready
+          - 5432:5432
         options: >-
           --health-cmd pg_isready
           --health-interval 10s
@@ -30,10 +28,10 @@ jobs:
       neo4j:
         image: neo4j:5-community
         env:
+          # This sets the initial password for the 'neo4j' user to 'testpassword'
           NEO4J_AUTH: neo4j/testpassword
         ports:
-          - 7687:7687 # Map Bolt port to the runner
-        # Healthcheck for Neo4j (less direct, just waits for port)
+          - 7687:7687
         options: >-
           --health-cmd "wget --no-verbose --tries=1 --spider http://localhost:7474 || exit 1"
           --health-interval 10s
@@ -52,23 +50,24 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
+        # First, install the pinned versions from requirements.txt
         pip install -r requirements.txt
-        # dev-requirements.txt might have testing tools
+        # Then, install any additional development/testing tools
         if [ -f dev-requirements.txt ]; then pip install -r dev-requirements.txt; fi
 
+    # The DB Init step only needs the PostgreSQL URL
     - name: Run Database Initialization
-      # Use the test credentials defined in the services block above
       env:
         DATABASE_URL: "postgresql+psycopg://testuser:testpassword@localhost:5432/testdb"
       run: python init_db.py
 
     - name: Run tests
-      # Provide all necessary env vars for the tests
+      # Use the exact same credentials defined in the services block
       env:
         DATABASE_URL: "postgresql+psycopg://testuser:testpassword@localhost:5432/testdb"
         NEO4J_URI: "neo4j://localhost:7687"
-        NEO4J_USERNAME: "neo4j"
-        NEO4J_PASSWORD: "testpassword"
+        NEO4J_USERNAME: "neo4j"         # This must match the user in NEO4J_AUTH
+        NEO4J_PASSWORD: "testpassword"  # This must match the password in NEO4J_AUTH
         SECRET_KEY: "a-secret-key-for-testing"
         ACCESS_TOKEN_EXPIRE_MINUTES: "30"
       run: pytest
