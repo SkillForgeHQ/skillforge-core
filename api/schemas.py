@@ -69,3 +69,4 @@ class MasteryCreate(BaseModel):
 class UserSkillMasteryCreate(BaseModel):
     skill_name: str
     mastery_level: int
+
