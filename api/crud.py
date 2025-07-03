@@ -18,10 +18,7 @@ def get_user_by_email(conn: Connection, email: str):
 def create_user(conn: Connection, user: schemas.UserCreate):
     """Creates a new user in the database."""
     hashed_password = security.get_password_hash(user.password)
-    user_data = {
-        "email": user.email,
-        "hashed_password": hashed_password
-    }
+    user_data = {"email": user.email, "hashed_password": hashed_password}
 
     # Using .returning() is more efficient to get the new user's data back
     stmt = insert(database.users).values(user_data).returning(database.users)
