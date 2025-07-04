@@ -15,9 +15,13 @@ router = APIRouter(
 
 
 @router.post("/", response_model=schemas.User, status_code=status.HTTP_201_CREATED)
-def register_user(user: schemas.UserCreate, conn: Connection = Depends(get_db)):
+def register_user(
+    user: schemas.UserCreate,
+    conn: Connection = Depends(get_db),
+    driver: Driver = Depends(get_graph_db_driver),  # <-- ADD THIS DEPENDENCY
+):
     """
-    Register a new user.
+    Register a new user in both PostgreSQL and Neo4j.
     """
     db_user = crud.get_user_by_email(conn=conn, email=user.email)
     if db_user:
@@ -26,7 +30,23 @@ def register_user(user: schemas.UserCreate, conn: Connection = Depends(get_db)):
             detail="Email already registered",
         )
 
+    # This remains the same - create the user in Postgres first.
     created_user = crud.create_user(conn=conn, user=user)
+
+    # --- NEW: Add the user to the graph database ---
+    try:
+        with driver.session() as session:
+            session.write_transaction(graph_crud.create_user_node, created_user.email)
+        print(f"Successfully created user node in graph for: {created_user.email}")
+    except Exception as e:
+        # This is an important design choice. If the graph creation fails,
+        # we log a critical error but do NOT fail the user registration.
+        # This makes the system more resilient. The user can still log in,
+        # and we can fix the graph data later if needed.
+        print(
+            f"CRITICAL: Failed to create graph user for {created_user.email}. Error: {e}"
+        )
+
     return created_user
 
 
