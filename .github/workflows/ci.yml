@@ -69,4 +69,5 @@ jobs:
           NEO4J_PASSWORD: "testpassword"
           SECRET_KEY: "a-secret-key-for-testing"
           ACCESS_TOKEN_EXPIRE_MINUTES: "30"
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: pytest
