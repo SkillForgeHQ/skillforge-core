@@ -5,58 +5,10 @@ from langchain_openai import ChatOpenAI
 from langchain_core.runnables import RunnableLambda, RunnablePassthrough
 import re
 
-# Import the langchain_graph object
 from ..database import langchain_graph
 
-# 1. Define the Language Model (no change)
+# --- (No changes to LLM or prompt template) ---
 llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
-
-# 2. Define the Cypher query (no change)
-retrieval_query = """
-MATCH (s:Skill)
-WHERE toLower(s.name) IN $keywords
-OPTIONAL MATCH (s)-[:DEPENDS_ON*1..2]-(related:Skill)
-RETURN s.name AS skill, s.description AS description, collect(DISTINCT related.name) AS related_skills
-LIMIT 10
-"""
-
-
-# 3. Create the ASYNCHRONOUS context retrieval function using run_in_threadpool
-# This is the key change to fix the deployment error.
-async def retrieve_context(input_dict: dict) -> list:
-    """
-    Extracts keywords and queries Neo4j in a non-blocking way.
-    """
-    question = input_dict.get("question", "")
-    stop_words = {
-        "a",
-        "an",
-        "the",
-        "is",
-        "in",
-        "what",
-        "with",
-        "have",
-        "to",
-        "do",
-        "skills",
-        "graph",
-    }
-    words = re.findall(r"\b\w+\b", question.lower())
-    keywords = [word for word in words if word not in stop_words]
-
-    if not keywords:
-        return []
-
-    # This runs the synchronous 'query' method in a separate thread,
-    # preventing it from blocking the async event loop.
-    context = await run_in_threadpool(
-        langchain_graph.query, retrieval_query, {"keywords": keywords}
-    )
-    return context
-
-
-# 4. Create a prompt template (no change)
 template = """
 You are a helpful AI assistant for the SkillForge platform.
 Answer the user's question based ONLY on the following context retrieved from the knowledge graph.
@@ -71,7 +23,46 @@ Answer:
 prompt = ChatPromptTemplate.from_template(template)
 
 
-# 5. Build the RAG chain (no change)
+# --- NEW: Updated retrieval logic ---
+async def retrieve_context(input_dict: dict) -> list:
+    """
+    Extracts keywords and queries Neo4j. If no specific keywords are found,
+    it fetches a few random skills as a fallback.
+    """
+    question = input_dict.get("question", "").lower()
+
+    # Expanded stop words to better handle generic queries
+    stop_words = {'a', 'an', 'the', 'is', 'in', 'what', 'with', 'have', 'to', 'do', 'skills', 'graph', 'skill', 'name', 'any', 'some'}
+    keywords = [word for word in re.findall(r'\b\w+\b', question) if word not in stop_words]
+
+    # If no useful keywords are left, use a fallback query
+    if not keywords:
+        retrieval_query = """
+        MATCH (s:Skill)
+        RETURN s.name AS skill, s.description AS description
+        ORDER BY rand()
+        LIMIT 3
+        """
+        params = {}
+    else:
+        # Otherwise, use the keyword-based query
+        retrieval_query = """
+        MATCH (s:Skill)
+        WHERE toLower(s.name) IN $keywords
+        OPTIONAL MATCH (s)-[:DEPENDS_ON*1..2]-(related:Skill)
+        RETURN s.name AS skill, s.description AS description, collect(DISTINCT related.name) AS related_skills
+        LIMIT 10
+        """
+        params = {"keywords": keywords}
+
+    # Run the chosen query in a threadpool
+    context = await run_in_threadpool(
+        langchain_graph.query, retrieval_query, params
+    )
+    return context
+
+
+# --- (No change to the final RAG chain) ---
 rag_chain = (
     {
         "context": RunnableLambda(retrieve_context),
