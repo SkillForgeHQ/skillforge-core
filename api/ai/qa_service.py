@@ -10,20 +10,19 @@ from ..database import langchain_graph
 # 1. Define the Language Model (no change)
 llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
 
-# 2. Define the NEW Cypher query
-# This query now looks for skills where the name is IN a list of keywords.
+# 2. Define the CORRECTED Cypher query
+# This version removes the non-existent "UNLOCKS" relationship.
 retrieval_query = """
-// Find skills matching any of the keywords
 MATCH (s:Skill)
 WHERE toLower(s.name) IN $keywords
-// Find related skills (dependencies or unlocks) up to 2 hops away
-OPTIONAL MATCH (s)-[:DEPENDS_ON|UNLOCKS*1..2]-(related)
+// CORRECTED: Only use the :DEPENDS_ON relationship
+OPTIONAL MATCH (s)-[:DEPENDS_ON*1..2]-(related:Skill)
 RETURN s.name AS skill, s.description AS description, collect(DISTINCT related.name) AS related_skills
 LIMIT 10
 """
 
-# 3. Create the NEW context retrieval function
-# This function will extract keywords before querying the graph
+
+# 3. Create the context retrieval function (no change)
 def retrieve_context(input_dict: dict) -> list:
     """
     Extracts keywords from the user's question, queries the Neo4j graph,
@@ -31,17 +30,26 @@ def retrieve_context(input_dict: dict) -> list:
     """
     question = input_dict.get("question", "")
 
-    # A simple but effective keyword extractor:
-    # removes common words and punctuation, keeps meaningful terms.
-    stop_words = {'a', 'an', 'the', 'is', 'in', 'what', 'with', 'have', 'to', 'do', 'skills', 'graph'}
-    # Use regex to find words, convert to lower case
-    words = re.findall(r'\b\w+\b', question.lower())
+    stop_words = {
+        "a",
+        "an",
+        "the",
+        "is",
+        "in",
+        "what",
+        "with",
+        "have",
+        "to",
+        "do",
+        "skills",
+        "graph",
+    }
+    words = re.findall(r"\b\w+\b", question.lower())
     keywords = [word for word in words if word not in stop_words]
 
     if not keywords:
-        return [] # Return empty if no keywords are found
+        return []
 
-    # Query the graph using the extracted keywords
     context = langchain_graph.query(retrieval_query, {"keywords": keywords})
     return context
 
@@ -61,8 +69,7 @@ Answer:
 prompt = ChatPromptTemplate.from_template(template)
 
 
-# 5. Build the NEW RAG chain
-# We replace the simple lambda with our new retrieve_context function
+# 5. Build the RAG chain (no change)
 rag_chain = (
     {
         "context": retrieve_context,

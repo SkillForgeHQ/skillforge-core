@@ -10,10 +10,11 @@ router = APIRouter(
     tags=["Q&A"],
 )
 
+
 @router.post("/", response_model=QAResponse)
 async def question_and_answer(
     request: QAQuery,
-    current_user: User = Depends(get_current_user) # Secure the endpoint
+    current_user: User = Depends(get_current_user),  # Secure the endpoint
 ):
     """
     Accepts a user question and returns an answer using the RAG chain.

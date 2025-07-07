@@ -95,10 +95,8 @@ def get_graph_db_driver() -> Driver:
         graph_db_manager.connect()
     return graph_db_manager.driver
 
+
 # This object will be used by our RAG chain.
 langchain_graph = Neo4jGraph(
-    url=NEO4J_URI,
-    username=NEO4J_USERNAME,
-    password=NEO4J_PASSWORD
+    url=NEO4J_URI, username=NEO4J_USERNAME, password=NEO4J_PASSWORD
 )
-

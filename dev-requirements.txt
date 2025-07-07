@@ -87,3 +87,7 @@ uvicorn==0.34.3
 watchfiles==1.1.0
 websockets==15.0.1
 zstandard==0.23.0
+-r requirements.txt
+pytest
+pytest-mock
+
