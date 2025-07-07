@@ -1,6 +1,6 @@
 # api/tests/test_qa.py
 from fastapi.testclient import TestClient
-from ..main import app
+from api.main import app
 from ..routers.auth import create_access_token
 from ..schemas import User
 from datetime import timedelta
