@@ -1,7 +1,7 @@
 # api/ai/qa_service.py
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
-from langchain_core.runnables import RunnablePassthrough
+from langchain_core.runnables import RunnableLambda, RunnablePassthrough
 import re
 
 # Import the langchain_graph object
@@ -10,26 +10,23 @@ from ..database import langchain_graph
 # 1. Define the Language Model (no change)
 llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
 
-# 2. Define the CORRECTED Cypher query
-# This version removes the non-existent "UNLOCKS" relationship.
+# 2. Define the Cypher query (no change)
 retrieval_query = """
 MATCH (s:Skill)
 WHERE toLower(s.name) IN $keywords
-// CORRECTED: Only use the :DEPENDS_ON relationship
 OPTIONAL MATCH (s)-[:DEPENDS_ON*1..2]-(related:Skill)
 RETURN s.name AS skill, s.description AS description, collect(DISTINCT related.name) AS related_skills
 LIMIT 10
 """
 
 
-# 3. Create the context retrieval function (no change)
-def retrieve_context(input_dict: dict) -> list:
+# 3. Create the ASYNCHRONOUS context retrieval function
+# Notice the "async def" and "await langchain_graph.aquery"
+async def retrieve_context(input_dict: dict) -> list:
     """
-    Extracts keywords from the user's question, queries the Neo4j graph,
-    and formats the results for the LLM.
+    Extracts keywords and asynchronously queries the Neo4j graph.
     """
     question = input_dict.get("question", "")
-
     stop_words = {
         "a",
         "an",
@@ -50,7 +47,8 @@ def retrieve_context(input_dict: dict) -> list:
     if not keywords:
         return []
 
-    context = langchain_graph.query(retrieval_query, {"keywords": keywords})
+    # Use the async "aquery" method
+    context = await langchain_graph.aquery(retrieval_query, {"keywords": keywords})
     return context
 
 
@@ -69,10 +67,11 @@ Answer:
 prompt = ChatPromptTemplate.from_template(template)
 
 
-# 5. Build the RAG chain (no change)
+# 5. Build the RAG chain
+# We wrap our async function in a RunnableLambda
 rag_chain = (
     {
-        "context": retrieve_context,
+        "context": RunnableLambda(retrieve_context),
         "question": RunnablePassthrough(),
     }
     | prompt
