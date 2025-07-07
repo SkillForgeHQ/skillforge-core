@@ -3,8 +3,8 @@
 import os
 from pathlib import Path
 from dotenv import load_dotenv
+from langchain_community.graphs import Neo4jGraph
 
-# --- This block now correctly loads the .env file ---
 env_path = Path(__file__).parent.parent / ".env"
 load_dotenv(dotenv_path=env_path)
 # --- End of fix ---
@@ -95,6 +95,10 @@ def get_graph_db_driver() -> Driver:
         graph_db_manager.connect()
     return graph_db_manager.driver
 
+# This object will be used by our RAG chain.
+langchain_graph = Neo4jGraph(
+    url=NEO4J_URI,
+    username=NEO4J_USERNAME,
+    password=NEO4J_PASSWORD
+)
 
-# You might also want to register startup and shutdown events in your api/main.py
-# to connect and close the driver cleanly.
