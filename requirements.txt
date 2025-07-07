@@ -17,7 +17,7 @@ python-dotenv
 langchain
 langchain-openai
 langchain-community
-langchain-neo4j # Added for the new Neo4jGraph
+# langchain-neo4j # Removed as it causes issues with Python 3.9
 
 # Utilities
 packaging==24.1
