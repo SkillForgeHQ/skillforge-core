@@ -24,10 +24,7 @@ class SkillCreate(SkillBase):
 class Skill(SkillBase):
     id: uuid.UUID
 
-    class Config:
-        # This tells Pydantic to read the data even if it is not a dict,
-        # but an ORM model (or any other arbitrary object with attributes).
-        from_attributes = True
+    model_config = {"from_attributes": True}
 
 
 class SkillUpdate(SkillBase):
@@ -50,8 +47,7 @@ class User(UserBase):
     id: int
     is_active: bool
 
-    class Config:
-        from_attributes = True  # Allows populating from ORM objects
+    model_config = {"from_attributes": True}  # Allows populating from ORM objects
 
 
 # ---- Token Schemas ----

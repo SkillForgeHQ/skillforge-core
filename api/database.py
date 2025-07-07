@@ -3,7 +3,7 @@
 import os
 from pathlib import Path
 from dotenv import load_dotenv
-from langchain_community.graphs import Neo4jGraph
+from langchain_neo4j import Neo4jGraph # Updated import
 
 env_path = Path(__file__).parent.parent / ".env"
 load_dotenv(dotenv_path=env_path)
@@ -97,6 +97,12 @@ def get_graph_db_driver() -> Driver:
 
 
 # This object will be used by our RAG chain.
-langchain_graph = Neo4jGraph(
-    url=NEO4J_URI, username=NEO4J_USERNAME, password=NEO4J_PASSWORD
-)
+if os.getenv("TESTING_MODE") == "True":
+    from unittest.mock import MagicMock
+    langchain_graph = MagicMock()
+    # You might want to configure the mock further if its attributes are accessed
+    # e.g., langchain_graph.schema = MagicMock()
+else:
+    langchain_graph = Neo4jGraph(
+        url=NEO4J_URI, username=NEO4J_USERNAME, password=NEO4J_PASSWORD
+    )
