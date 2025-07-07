@@ -104,7 +104,7 @@ if os.getenv("TESTING_MODE") == "True":
     # e.g., langchain_graph.schema = MagicMock()
 else:
     import warnings
-    from langchain.chains.graph_qa.deprecated_schema import LangChainDeprecationWarning # Correct specific warning if possible, else use general DeprecationWarning
+    # Removed problematic import: from langchain.chains.graph_qa.deprecated_schema import LangChainDeprecationWarning
 
     with warnings.catch_warnings():
         # Filter the specific LangChainDeprecationWarning related to Neo4jGraph from langchain_community
