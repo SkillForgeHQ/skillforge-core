@@ -22,20 +22,17 @@ Answer:
 """
 prompt = ChatPromptTemplate.from_template(template)
 
-
-# --- NEW: Updated retrieval logic ---
+# --- UPDATED retrieval logic ---
 async def retrieve_context(input_dict: dict) -> list:
     """
-    Extracts keywords and queries Neo4j. If no specific keywords are found,
-    it fetches a few random skills as a fallback.
+    Extracts keywords and queries Neo4j using a flexible 'CONTAINS' search.
+    Falls back to random skills if no specific keywords are found.
     """
     question = input_dict.get("question", "").lower()
 
-    # Expanded stop words to better handle generic queries
-    stop_words = {'a', 'an', 'the', 'is', 'in', 'what', 'with', 'have', 'to', 'do', 'skills', 'graph', 'skill', 'name', 'any', 'some'}
+    stop_words = {'a', 'an', 'the', 'is', 'in', 'what', 'with', 'have', 'to', 'do', 'skills', 'graph', 'skill', 'name', 'any', 'some', 'w/'}
     keywords = [word for word in re.findall(r'\b\w+\b', question) if word not in stop_words]
 
-    # If no useful keywords are left, use a fallback query
     if not keywords:
         retrieval_query = """
         MATCH (s:Skill)
@@ -45,17 +42,17 @@ async def retrieve_context(input_dict: dict) -> list:
         """
         params = {}
     else:
-        # Otherwise, use the keyword-based query
+        # This query now uses CONTAINS for a more flexible search
         retrieval_query = """
+        UNWIND $keywords AS keyword
         MATCH (s:Skill)
-        WHERE toLower(s.name) IN $keywords
+        WHERE toLower(s.name) CONTAINS keyword
         OPTIONAL MATCH (s)-[:DEPENDS_ON*1..2]-(related:Skill)
         RETURN s.name AS skill, s.description AS description, collect(DISTINCT related.name) AS related_skills
         LIMIT 10
         """
         params = {"keywords": keywords}
 
-    # Run the chosen query in a threadpool
     context = await run_in_threadpool(
         langchain_graph.query, retrieval_query, params
     )

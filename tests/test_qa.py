@@ -2,7 +2,7 @@
 from fastapi.testclient import TestClient
 from api.main import app
 from api.security import create_access_token
-from ..schemas import User
+from api.schemas import User
 from datetime import timedelta
 
 client = TestClient(app)
