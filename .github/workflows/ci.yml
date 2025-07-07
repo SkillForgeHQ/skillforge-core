@@ -29,6 +29,8 @@ jobs:
         image: neo4j:5-community
         env:
           NEO4J_AUTH: neo4j/testpassword
+          # THIS LINE INSTALLS THE APOC PLUGIN
+          NEO4J_PLUGINS: '["apoc"]'
         ports:
           - 7687:7687
         options: >-
