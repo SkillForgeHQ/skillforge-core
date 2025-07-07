@@ -1,4 +1,5 @@
 # api/ai/qa_service.py
+from fastapi.concurrency import run_in_threadpool
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 from langchain_core.runnables import RunnableLambda, RunnablePassthrough
@@ -20,11 +21,11 @@ LIMIT 10
 """
 
 
-# 3. Create the ASYNCHRONOUS context retrieval function
-# Notice the "async def" and "await langchain_graph.aquery"
+# 3. Create the ASYNCHRONOUS context retrieval function using run_in_threadpool
+# This is the key change to fix the deployment error.
 async def retrieve_context(input_dict: dict) -> list:
     """
-    Extracts keywords and asynchronously queries the Neo4j graph.
+    Extracts keywords and queries Neo4j in a non-blocking way.
     """
     question = input_dict.get("question", "")
     stop_words = {
@@ -47,8 +48,11 @@ async def retrieve_context(input_dict: dict) -> list:
     if not keywords:
         return []
 
-    # Use the async "aquery" method
-    context = await langchain_graph.aquery(retrieval_query, {"keywords": keywords})
+    # This runs the synchronous 'query' method in a separate thread,
+    # preventing it from blocking the async event loop.
+    context = await run_in_threadpool(
+        langchain_graph.query, retrieval_query, {"keywords": keywords}
+    )
     return context
 
 
@@ -67,8 +71,7 @@ Answer:
 prompt = ChatPromptTemplate.from_template(template)
 
 
-# 5. Build the RAG chain
-# We wrap our async function in a RunnableLambda
+# 5. Build the RAG chain (no change)
 rag_chain = (
     {
         "context": RunnableLambda(retrieve_context),
