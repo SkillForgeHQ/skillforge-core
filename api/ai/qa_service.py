@@ -6,9 +6,21 @@ from langchain_core.runnables import RunnableLambda, RunnablePassthrough
 import re
 
 from ..database import langchain_graph
+import os # For TESTING_MODE
+from unittest.mock import MagicMock # For mock llm
 
-# --- (No changes to LLM or prompt template) ---
-llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+# --- LLM Initialization based on TESTING_MODE ---
+if os.getenv("TESTING_MODE") == "True":
+    llm = MagicMock()
+    # If specific attributes or methods of llm are called directly during rag_chain construction
+    # (outside of the part that gets mocked in tests), configure them here.
+    # For example, if rag_chain construction did `llm.some_property`, then:
+    # llm.some_property = MagicMock()
+else:
+    llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
+    # _rag_chain_real was part of a previous incorrect approach. Removing it.
+
+# Template and prompt are defined before rag_chain
 template = """
 You are a helpful AI assistant for the SkillForge platform.
 Answer the user's question based ONLY on the following context retrieved from the knowledge graph.
@@ -58,13 +70,17 @@ async def retrieve_context(input_dict: dict) -> list:
     )
     return context
 
-
-# --- (No change to the final RAG chain) ---
-rag_chain = (
-    {
-        "context": RunnableLambda(retrieve_context),
-        "question": RunnablePassthrough(),
-    }
-    | prompt
-    | llm
-)
+# --- rag_chain definition is now conditional ---
+if os.getenv("TESTING_MODE") == "True":
+    rag_chain = MagicMock(name="mocked_rag_chain_in_service")
+    # If rag_chain needs specific attributes for other parts of qa_service.py
+    # during import (not typical for just being a chain definition), set them here.
+else:
+    rag_chain = (
+        {
+            "context": RunnableLambda(retrieve_context),
+            "question": RunnablePassthrough(),
+        }
+        | prompt
+        | llm # llm is the real ChatOpenAI or a MagicMock based on TESTING_MODE
+    )

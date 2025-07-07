@@ -3,7 +3,7 @@
 import os
 from pathlib import Path
 from dotenv import load_dotenv
-from langchain_community.graphs import Neo4jGraph
+from langchain_community.graphs import Neo4jGraph # Reverted import
 
 env_path = Path(__file__).parent.parent / ".env"
 load_dotenv(dotenv_path=env_path)
@@ -97,6 +97,26 @@ def get_graph_db_driver() -> Driver:
 
 
 # This object will be used by our RAG chain.
-langchain_graph = Neo4jGraph(
-    url=NEO4J_URI, username=NEO4J_USERNAME, password=NEO4J_PASSWORD
-)
+if os.getenv("TESTING_MODE") == "True":
+    from unittest.mock import MagicMock
+    langchain_graph = MagicMock()
+    # You might want to configure the mock further if its attributes are accessed
+    # e.g., langchain_graph.schema = MagicMock()
+else:
+    import warnings
+    # Removed problematic import: from langchain.chains.graph_qa.deprecated_schema import LangChainDeprecationWarning
+
+    with warnings.catch_warnings():
+        # Filter the specific LangChainDeprecationWarning related to Neo4jGraph from langchain_community
+        # If the exact warning class is hard to import or pin down, use a more general category
+        # or filter by message if necessary. For now, trying to catch a general one if specific isn't available.
+        # The warning was: "The class `Neo4jGraph` was deprecated in LangChain 0.3.8 and will be removed in 1.0."
+        # This warning originates from langchain_community.graphs.Neo4jGraph
+        warnings.filterwarnings(
+            "ignore",
+            category=DeprecationWarning, # Using general DeprecationWarning, refine if possible
+            message="The class `Neo4jGraph` was deprecated in LangChain 0.3.8*" # Match start of message
+        )
+        langchain_graph = Neo4jGraph(
+            url=NEO4J_URI, username=NEO4J_USERNAME, password=NEO4J_PASSWORD
+        )
