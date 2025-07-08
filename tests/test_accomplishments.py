@@ -1,7 +1,7 @@
 import pytest
 from fastapi.testclient import TestClient
 from jose import jwt
-from ..api.main import app  # Adjust import as needed
+from api.main import app  # Adjust import as needed
 
 client = TestClient(app)
 

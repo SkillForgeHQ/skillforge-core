@@ -8,7 +8,7 @@ from ..ai.skill_extractor import skill_extractor_chain
 from ..ai.skill_matcher import find_skill_match
 
 # Database Imports
-from ..database import get_graph_db_driver, get_neo4j_session
+from ..database import get_graph_db_driver
 from .. import graph_crud
 from ..schemas import AccomplishmentCreate, Accomplishment as AccomplishmentSchema, User
 
@@ -142,7 +142,7 @@ async def process_accomplishment(
     tags=["Accomplishments", "VC"],
 )
 def issue_accomplishment_credential(
-    accomplishment_id: uuid.UUID, db: Session = Depends(get_neo4j_session)
+    accomplishment_id: uuid.UUID, driver: Driver = Depends(get_graph_db_driver)
 ):
     """
     Issues a signed Verifiable Credential (in JWT format) for a specific
@@ -157,9 +157,10 @@ def issue_accomplishment_credential(
         raise HTTPException(status_code=500, detail="Issuer key not found.")
 
     # 2. Fetch accomplishment details from the graph
-    accomplishment = db.read_transaction(
-        graph_crud.get_accomplishment_details, accomplishment_id
-    )
+    with driver.session() as session:
+        accomplishment = session.read_transaction(
+            graph_crud.get_accomplishment_details, accomplishment_id
+        )
     if not accomplishment:
         raise HTTPException(status_code=404, detail="Accomplishment not found.")
 
