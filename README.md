@@ -30,18 +30,18 @@ no matter what your goal may be.
 **SkillForge Core**
 
 The mapping engine, which leverages a graph database to model skills and their interdependencies.
-The core of our model consists of:
+The core of our model has been updated to focus on concrete evidence of skill acquisition. It now consists of:
 
-*   `:Skill` nodes: Representing individual skills (e.g., 'JavaScript ES6', 'React Hooks').
 *   `:User` nodes: Representing learners in the system.
-*   `[:DEPENDS_ON]` relationships: A `(:Skill)-[:DEPENDS_ON]->(:Skill)` relationship indicates a prerequisite.
-*   `[:HAS_SKILL]` relationships: A `(:User)-[:HAS_SKILL]->(:Skill)` relationship shows that a user has acquired a particular skill.
+*   `:Accomplishment` nodes: Representing tangible, verified work or achievements by a user (e.g., 'Completed Advanced Python Project', 'Published Research Paper on Machine Learning').
+*   `:Skill` nodes: Representing individual skills (e.g., 'JavaScript ES6', 'React Hooks', 'Statistical Analysis').
+*   `[:COMPLETED]` relationships: A `(:User)-[:COMPLETED]->(:Accomplishment)` relationship shows that a user has finished a specific accomplishment.
+*   `[:DEMONSTRATES]` relationships: An `(:Accomplishment)-[:DEMONSTRATES]->(:Skill)` relationship indicates that completing a particular accomplishment provides evidence for possessing a certain skill. Skills are now inferred from these verified accomplishments rather than abstract mastery levels.
+*   `[:DEPENDS_ON]` relationships: A `(:Skill)-[:DEPENDS_ON]->(:Skill)` relationship indicates a prerequisite, meaning one skill should ideally be learned before another.
 
 **Personalized Learning Paths:**
 
-The primary feature of this API is the ability to generate personalized learning paths. By providing a user's profile,
-the system can determine the most efficient sequence of skills to learn next,
-filtering out any skills the user has already mastered.
+The primary feature of this API is the ability to generate personalized learning paths. By analyzing a user's completed accomplishments, the system can determine which skills they have demonstrated and then suggest the most efficient sequence of new skills to learn next to reach a desired goal.
 
 ## API Endpoints
 
@@ -204,9 +204,9 @@ curl -X 'GET' \
 }
 ```
 
-### User Interactions with Skills (Neo4j)
+### User Accomplishments and Skills (Neo4j)
 
-These endpoints manage how users interact with skills in the Neo4j graph database. All are prefixed with `/users`.
+These endpoints manage user accomplishments and how they relate to skills in the Neo4j graph database. All are prefixed with `/users`.
 
 #### Create User Node in Graph
 `POST /users/graph/users/{email}`
@@ -241,43 +241,10 @@ curl -X 'POST' \
 
 **Error Response (4xx)** If the user already exists or other graph errors occur.
 
-#### Add Skill to User (Link User to Skill)
-`POST /users/graph/users/{email}/skills/{skill_name}`
-
-Links a user to a skill they have acquired by creating a `[:HAS_SKILL]` relationship in the Neo4j graph (e.g., `(:User {email: $email})-[:HAS_SKILL]->(:Skill {name: $skill_name})`).
-
-**Path Parameters**
-
-| Parameter    | Type   | Description                        |
-|:-------------|:-------|:-----------------------------------|
-| `email`      | string | The unique ID (email) of the user. |
-| `skill_name` | string | The unique name of the skill.      |
-
-**Request Body**
-
-None
-
-**cURL Example**
-```bash
-curl -X 'POST' \
-  'http://127.0.0.1:8000/users/graph/users/test%40example.com/skills/Python' \
-  -H 'accept: application/json' \
-  -d ''
-```
-
-**Successful Response (201 Created)**
-```json
-{
-  "message": "User 'test@example.com' now has skill 'Python'"
-}
-```
-
-**Error Response (404 Not Found)** If the user or skill does not exist in the graph (actual behavior might depend on `graph_crud.add_user_skill` implementation if it checks existence).
-
 #### Get Personalized Learning Path for User
 `GET /users/graph/users/{email}/learning-path/{skill_name}`
 
-Generates an ordered, consolidated learning path for a specific user towards a target skill. It considers the skills the user already possesses (via `[:HAS_SKILL]` relationships) and excludes them from the path.
+Generates an ordered, consolidated learning path for a specific user towards a target skill. It considers the skills the user has demonstrated through **completed accomplishments** and excludes them from the path.
 
 **Path Parameters**
 
@@ -304,7 +271,7 @@ curl -X 'GET' \
   "Object-Oriented Programming in Python"
 ]
 ```
-(Example: If "Advanced Python" depends on "Object-Oriented Programming in Python" and "Python Basics", and the user `test@example.com` already has "Python Basics", this path is returned. If the user had no relevant skills, the full path to "Advanced Python" would be listed.)
+(Example: If "Advanced Python" depends on "Object-Oriented Programming in Python" and "Python Basics", and the user `test@example.com` has completed accomplishments demonstrating "Python Basics", this path is returned. If the user had no relevant skills demonstrated through accomplishments, the full path to "Advanced Python" would be listed.)
 
 **Error Response (404 Not Found)** If the user or target skill does not exist, or if no learning path is found.
 ```json
@@ -313,37 +280,74 @@ curl -X 'GET' \
 }
 ```
 
-#### Remove Skill From User
-`DELETE /users/graph/users/{email}/skills/{skill_name}`
+#### Add Accomplishment for User
+`POST /users/{email}/accomplishments`
 
-Removes a `[:HAS_SKILL]` relationship between a user and a skill in the Neo4j graph.
+Records a new accomplishment for a user and links it to them in the graph. The system then processes this accomplishment to identify and link demonstrated skills. This is the primary way skills are associated with a user.
 
 **Path Parameters**
 
-| Parameter    | Type   | Description                        |
-|:-------------|:-------|:-----------------------------------|
-| `email`      | string | The unique ID (email) of the user. |
-| `skill_name` | string | The unique name of the skill.      |
+| Parameter | Type   | Description                               |
+|:----------|:-------|:------------------------------------------|
+| `email`   | string | The email address of the user.            |
 
-**Request Body**
-
-None
-
-**cURL Example**
-```bash
-curl -X 'DELETE' \
-  'http://127.0.0.1:8000/users/graph/users/test%40example.com/skills/OldSkill' \
-  -H 'accept: application/json'
-```
-
-**Successful Response (200 OK)**
+**Request Body** (`schemas.AccomplishmentCreate`)
 ```json
 {
-  "message": "Skill 'OldSkill' removed from user 'test@example.com'"
+  "name": "Completed Kaggle Competition",
+  "description": "Participated in the 'Titanic: Machine Learning from Disaster' Kaggle competition and submitted a model with 78% accuracy.",
+  "proof_url": "https://www.kaggle.com/c/titanic/submissions/12345"
 }
 ```
 
-**Error Response (404 Not Found)** If the user or skill (or the relationship) does not exist (actual behavior depends on `graph_crud.remove_user_skill`).
+| Parameter     | Type   | Description                                |
+|:--------------|:-------|:-------------------------------------------|
+| `name`        | string | The name of the accomplishment.            |
+| `description` | string | A detailed description of the accomplishment. |
+| `proof_url`   | string | (Optional) A URL to evidence of the accomplishment. |
+
+**cURL Example**
+```bash
+curl -X 'POST' \
+  'http://127.0.0.1:8000/users/test%40example.com/accomplishments' \
+  -H 'accept: application/json' \
+  -H 'Content-Type: application/json' \
+  -d '{
+  "name": "Developed a REST API with FastAPI",
+  "description": "Designed and implemented a full REST API for a personal project using Python, FastAPI, and Pydantic.",
+  "proof_url": "https://github.com/me/my-fastapi-project"
+}'
+```
+
+**Successful Response (201 Created)** (Returns the created `Accomplishment` along with extracted skills)
+```json
+{
+  "accomplishment": {
+    "name": "Developed a REST API with FastAPI",
+    "description": "Designed and implemented a full REST API for a personal project using Python, FastAPI, and Pydantic.",
+    "proof_url": "https://github.com/me/my-fastapi-project",
+    "id": "a1b2c3d4-e5f6-7890-1234-567890abcdef",
+    "timestamp": "2023-10-27T10:30:00Z"
+  },
+  "extracted_skills": [
+    "Python",
+    "FastAPI",
+    "Pydantic",
+    "REST API Design"
+  ],
+  "message": "Accomplishment processed and linked to skills."
+}
+```
+
+**Error Response (404 Not Found)** If the user does not exist in the graph.
+```json
+{
+  "detail": "User not found"
+}
+```
+
+**Error Response (422 Validation Error)** For invalid request body.
+
 
 ### Skills Management (Neo4j)
 
