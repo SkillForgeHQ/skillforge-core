@@ -11,8 +11,6 @@ _neo4j_constructor_patcher = None
 def pytest_configure(config):
     """Sets TESTING_MODE=True and other default test environment variables very early."""
     os.environ["TESTING_MODE"] = "True"
-    # Set default values for other environment variables if they are not already set.
-    # This is useful for CI environments where a .env file might not be present or sourced.
     os.environ.setdefault(
         "DATABASE_URL", "postgresql://testuser:testpass@localhost:5432/testdb_ci"
     )
@@ -28,15 +26,8 @@ def pytest_configure(config):
 def mock_external_service_constructors(request):
     """
     Mocks constructors of external services like Neo4jGraph at a low level.
-    This acts as a safety net in case the TESTING_MODE environment variable
-    isn't effective in preventing their instantiation in all contexts during import.
     """
     global _neo4j_constructor_patcher
-
-    # Mock the Neo4jGraph class from langchain_community.graphs
-    # When Neo4jGraph(...) is called, it will use this MagicMock class.
-    # Instantiating this MagicMock class (e.g. Neo4jGraph()) will return another MagicMock (the instance).
-    # This prevents the original __init__ (which tries to connect) from running.
     mock_neo4j_class = MagicMock(name="MockLangchainCommunityNeo4jGraphClass")
     _neo4j_constructor_patcher = patch(
         "langchain_community.graphs.Neo4jGraph", new=mock_neo4j_class
@@ -57,31 +48,70 @@ def test_keys(tmp_path_factory):
     """
     Creates a temporary JWK key pair for the test session.
     """
-    # Create a temporary directory for the keys
     keys_path = tmp_path_factory.mktemp("keys")
     private_key_path = keys_path / "private_key.json"
-
-    # Generate a key
     key = jwk.JWK.generate(kty="EC", crv="P-256")
     private_key_json = key.export_private()
     public_key_json = key.export_public()
-
-    # Save the private key to the temporary file
     with open(private_key_path, "w") as f:
         f.write(private_key_json)
-
-    # Return the path to the private key and the public key object
     return {
         "private_key_path": private_key_path,
         "public_key": jwk.JWK(**json.loads(public_key_json)),
-        "issuer_id": "https://skillforge.test",  # Use a test issuer
+        "issuer_id": "https://skillforge.io", # Align with hardcoded issuer in endpoint
     }
 
 
-# Note:
-# Mocking for ChatOpenAI and the RAG chain instance (api.ai.qa_service.rag_chain)
-# is now handled by the TESTING_MODE checks directly within the application code
-# (api/ai/qa_service.py), where they are replaced by MagicMock instances.
-# The api.database.langchain_graph is also handled by TESTING_MODE in api/database.py.
-# This conftest.py primarily ensures TESTING_MODE is set early and provides a
-# fallback mock for the Neo4jGraph class constructor itself if it were ever reached.
+@pytest.fixture
+def clean_db_client():
+    """
+    Provides a TestClient instance with a clean database state (PostgreSQL and Neo4j)
+    by using an app factory and ensuring database tables are created and emptied.
+    """
+    import os
+    from sqlalchemy import create_engine
+    from fastapi.testclient import TestClient
+
+    from api.main import create_app
+    from api.database import metadata as pg_metadata, graph_db_manager, get_graph_db_driver
+
+    DATABASE_URL_FOR_TESTS = os.getenv("DATABASE_URL")
+    if not DATABASE_URL_FOR_TESTS:
+        raise RuntimeError("DATABASE_URL not set for tests by pytest_configure.")
+
+    test_setup_pg_engine = create_engine(DATABASE_URL_FOR_TESTS)
+
+    pg_metadata.create_all(test_setup_pg_engine, checkfirst=True)
+    with test_setup_pg_engine.connect() as connection:
+        pg_tx = connection.begin()
+        try:
+            accomplishments_table = pg_metadata.tables.get("accomplishments")
+            if accomplishments_table is not None:
+                connection.execute(accomplishments_table.delete())
+            users_table = pg_metadata.tables.get("users")
+            if users_table is not None:
+                connection.execute(users_table.delete())
+            pg_tx.commit()
+        except Exception as e:
+            pg_tx.rollback()
+            raise e
+        finally:
+            connection.close()
+
+    if graph_db_manager.driver is not None:
+        graph_db_manager.close()
+
+    neo4j_driver_for_cleanup = get_graph_db_driver()
+    with neo4j_driver_for_cleanup.session() as session:
+        neo_tx = None
+        try:
+            neo_tx = session.begin_transaction()
+            neo_tx.run("MATCH (n) DETACH DELETE n")
+            neo_tx.commit()
+        except Exception as e:
+            if neo_tx:
+                neo_tx.rollback()
+            raise e
+
+    app_instance = create_app()
+    yield TestClient(app_instance)

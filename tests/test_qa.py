@@ -1,8 +1,9 @@
 # api/tests/test_qa.py
+import pytest # Added for @pytest.fixture
 from fastapi.testclient import TestClient
-from api.main import app
+# from api.main import app # Removed global app import
 from api.security import create_access_token
-from api.schemas import User
+from api.schemas import User # User is imported twice, will clean up later if distinct
 from datetime import timedelta
 
 # The autouse session-scoped fixture 'mock_neo4j_globally_session' in conftest.py
@@ -43,12 +44,20 @@ async def override_get_db():
     finally:
         pass  # No actual closing needed for a mock
 
-
-app.dependency_overrides[get_db] = override_get_db
+# app.dependency_overrides[get_db] = override_get_db # This was moved into the qa_app_client fixture
 # --- End of database mocking ---
 
+# client = TestClient(app) # Will be replaced by a fixture
 
-client = TestClient(app)
+@pytest.fixture
+def qa_app_client():
+    from api.main import create_app
+    test_app = create_app()
+    test_app.dependency_overrides[get_db] = override_get_db
+    with TestClient(test_app) as client:
+        yield client
+    # Clear overrides if necessary, though for function scope it's usually fine
+    test_app.dependency_overrides.clear()
 
 
 def get_test_user_token():
@@ -62,7 +71,7 @@ def get_test_user_token():
     )
 
 
-def test_qa_endpoint_with_mocking(mocker):
+def test_qa_endpoint_with_mocking(mocker, qa_app_client): # Added qa_app_client fixture
     """
     Tests the /qa/ endpoint by mocking the RAG chain.
     The 'mocker' fixture is provided by pytest-mock.
@@ -99,7 +108,7 @@ def test_qa_endpoint_with_mocking(mocker):
     # mocker.patch("api.database.Neo4jGraph", autospec=True) # Commenting out as it's not the primary fix here
 
     # Act: Call the API endpoint
-    response = client.post("/qa/", headers=headers, json={"question": test_question})
+    response = qa_app_client.post("/qa/", headers=headers, json={"question": test_question}) # Use qa_app_client
 
     # Assert: Check if the outcome is what we expect
     if response.status_code == 500:
