@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from typing import List
 import uuid
 
-from api.dependencies import get_db
+from api.database import get_graph_db_driver # Corrected import
 from api import graph_crud, schemas
 from neo4j import Driver
 
@@ -19,12 +19,12 @@ router = APIRouter(
 async def create_user_accomplishment(
     email: str,
     accomplishment: schemas.AccomplishmentCreate,
-    db: Driver = Depends(get_db),
+    db: Driver = Depends(get_graph_db_driver), # Corrected dependency
 ):
     """
     Create an accomplishment for a user.
     """
-    with db.session() as session:
+    with db.session() as session: # Neo4j driver uses db.session(), not db.connect()
         try:
             created_accomplishment = session.write_transaction(
                 graph_crud.create_accomplishment, email, accomplishment.model_dump()
