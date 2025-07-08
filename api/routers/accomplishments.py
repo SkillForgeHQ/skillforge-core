@@ -187,7 +187,7 @@ def issue_accomplishment_credential(
     # 4. Construct the JWT Claims, placing the VC inside the 'vc' claim
     jwt_claims = {
         "iss": "https://skillforge.io",  # Issuer of the JWT
-        "sub": accomplishment["user"]["id"],  # Subject of the JWT
+        "sub": str(accomplishment["user"]["id"]),  # Subject of the JWT, ensured as string
         "iat": int(issuance_date.timestamp()),  # Issued at time
         "vc": vc_payload,
     }
