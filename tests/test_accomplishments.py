@@ -1,12 +1,14 @@
 import pytest
+import uuid
 from fastapi.testclient import TestClient
 from jose import jwt
 from api.main import app  # Adjust import as needed
 
-client = TestClient(app)
+# client = TestClient(app) # Use a fresh client for this test to avoid state issues
 
 
 def test_issue_vc_for_accomplishment(monkeypatch, test_keys):
+    client = TestClient(app)  # Create a new client for this test
     """
     Tests the full loop:
     1. Create a user and an accomplishment.
@@ -14,13 +16,21 @@ def test_issue_vc_for_accomplishment(monkeypatch, test_keys):
     3. Decode the resulting JWT with the public key and verify its contents.
     """
     # Use monkeypatch to make the app use the temporary test key
-    monkeypatch.setattr(
-        "builtins.open", lambda *args, **kwargs: open(test_keys["private_key_path"])
-    )
+    original_open = open
+
+    def mock_open(file, *args, **kwargs):
+        if file == test_keys["private_key_path"]:
+            return original_open(test_keys["private_key_path"], *args, **kwargs)
+        return original_open(file, *args, **kwargs)
+
+    monkeypatch.setattr("builtins.open", mock_open)
 
     # STEP 1: Create the necessary data (user and accomplishment)
-    user_email = "test.vc.user@skillforge.io"
-    client.post("/users/", json={"email": user_email, "name": "VC Test User"})
+    unique_id = uuid.uuid4().hex[:8]  # Use a portion of a UUID for uniqueness
+    user_email = f"test.vc.user.{unique_id}@skillforge.io"
+    user_payload = {"email": user_email, "name": "VC Test User", "password": "asecurepassword"}
+    user_response = client.post("/users/", json=user_payload)
+    assert user_response.status_code == 200, f"Failed to create user: {user_response.text}"
 
     accomplishment_payload = {
         "name": "Built a Test Case",
