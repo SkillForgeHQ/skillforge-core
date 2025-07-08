@@ -1,4 +1,5 @@
 from neo4j import GraphDatabase
+from typing import List
 
 # Create Operations
 
@@ -258,3 +259,16 @@ def add_mastery_level_to_skill(
         description=description,
     )
     return result.single()
+
+
+def get_user_skills_by_accomplishments(tx, email: str) -> List[str]:
+    """
+    Retrieves a list of unique skill names a user has demonstrated through accomplishments.
+    """
+    query = """
+    MATCH (u:User {email: $email})-[:COMPLETED]->(a:Accomplishment)-[:DEMONSTRATES]->(s:Skill)
+    RETURN COLLECT(DISTINCT s.name) AS skills
+    """
+    result = tx.run(query, email=email)
+    record = result.single()
+    return record["skills"] if record and record["skills"] is not None else []

@@ -132,7 +132,7 @@ def get_personalized_path(
         )
 
         # 2. Get the skills the user already has
-        user_skills = session.execute_read(graph_crud.get_user_skills, email)
+        user_skills = session.execute_read(graph_crud.get_user_skills_by_accomplishments, email)
 
     # 3. In Python, filter the full path to exclude skills the user has
     # We use a set for user_skills for a more efficient lookup.
