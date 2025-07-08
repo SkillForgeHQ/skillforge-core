@@ -6,8 +6,8 @@ from langchain_core.runnables import RunnableLambda, RunnablePassthrough
 import re
 
 from ..database import langchain_graph
-import os # For TESTING_MODE
-from unittest.mock import MagicMock # For mock llm
+import os  # For TESTING_MODE
+from unittest.mock import MagicMock  # For mock llm
 
 # --- LLM Initialization based on TESTING_MODE ---
 if os.getenv("TESTING_MODE") == "True":
@@ -34,6 +34,7 @@ Answer:
 """
 prompt = ChatPromptTemplate.from_template(template)
 
+
 # --- UPDATED retrieval logic ---
 async def retrieve_context(input_dict: dict) -> list:
     """
@@ -42,8 +43,28 @@ async def retrieve_context(input_dict: dict) -> list:
     """
     question = input_dict.get("question", "").lower()
 
-    stop_words = {'a', 'an', 'the', 'is', 'in', 'what', 'with', 'have', 'to', 'do', 'skills', 'graph', 'skill', 'name', 'any', 'some', 'w/'}
-    keywords = [word for word in re.findall(r'\b\w+\b', question) if word not in stop_words]
+    stop_words = {
+        "a",
+        "an",
+        "the",
+        "is",
+        "in",
+        "what",
+        "with",
+        "have",
+        "to",
+        "do",
+        "skills",
+        "graph",
+        "skill",
+        "name",
+        "any",
+        "some",
+        "w/",
+    }
+    keywords = [
+        word for word in re.findall(r"\b\w+\b", question) if word not in stop_words
+    ]
 
     if not keywords:
         retrieval_query = """
@@ -65,10 +86,9 @@ async def retrieve_context(input_dict: dict) -> list:
         """
         params = {"keywords": keywords}
 
-    context = await run_in_threadpool(
-        langchain_graph.query, retrieval_query, params
-    )
+    context = await run_in_threadpool(langchain_graph.query, retrieval_query, params)
     return context
+
 
 # --- rag_chain definition is now conditional ---
 if os.getenv("TESTING_MODE") == "True":
@@ -82,5 +102,5 @@ else:
             "question": RunnablePassthrough(),
         }
         | prompt
-        | llm # llm is the real ChatOpenAI or a MagicMock based on TESTING_MODE
+        | llm  # llm is the real ChatOpenAI or a MagicMock based on TESTING_MODE
     )

@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field, field_validator
 from typing import List, Optional, Any
 import uuid
 from datetime import datetime
-from neo4j.time import DateTime as Neo4jDateTime # Import for type checking
+from neo4j.time import DateTime as Neo4jDateTime  # Import for type checking
 
 
 # This is a base model. It contains fields that are common to other models.

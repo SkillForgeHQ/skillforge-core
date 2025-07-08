@@ -143,7 +143,9 @@ def create_accomplishment(tx, user_email: str, accomplishment_data: dict):
     CREATE (u)-[:COMPLETED]->(a)
     RETURN a
     """
-    result = tx.run(query, user_email=user_email, accomplishment_data=accomplishment_data)
+    result = tx.run(
+        query, user_email=user_email, accomplishment_data=accomplishment_data
+    )
     return result.single()["a"]
 
 
@@ -193,3 +195,15 @@ def get_user_skills_by_accomplishments(tx, email: str) -> List[str]:
     result = tx.run(query, email=email)
     record = result.single()
     return record["skills"] if record and record["skills"] is not None else []
+
+
+def get_accomplishment_details(tx, accomplishment_id):
+    query = """
+    MATCH (u:User)-[:COMPLETED]->(a:Accomplishment {id: $accomplishment_id})
+    RETURN u, a
+    """
+    result = tx.run(query, accomplishment_id=str(accomplishment_id))
+    record = result.single()
+    if record:
+        return {"user": record["u"], "accomplishment": record["a"]}
+    return None

@@ -8,12 +8,19 @@ from ..ai.skill_extractor import skill_extractor_chain
 from ..ai.skill_matcher import find_skill_match
 
 # Database Imports
-from ..database import get_graph_db_driver
+from ..database import get_graph_db_driver, get_neo4j_session
 from .. import graph_crud
 from ..schemas import AccomplishmentCreate, Accomplishment as AccomplishmentSchema, User
 
 # Security Imports
 from .auth import get_current_user
+from fastapi import APIRouter, Depends, HTTPException
+
+from jose import jwt
+from jwcrypto import jwk
+import json
+import datetime
+import uuid
 
 router = APIRouter()
 
@@ -48,10 +55,12 @@ async def process_accomplishment(
             accomplishment_node = session.write_transaction(
                 graph_crud.create_accomplishment,
                 current_user.email,
-                accomplishment_data.model_dump(), # Send the whole dict
+                accomplishment_data.model_dump(),  # Send the whole dict
             )
             # Convert Neo4j Node to Pydantic model. Ensure your Pydantic model can handle this.
-            created_accomplishment = AccomplishmentSchema.model_validate(accomplishment_node)
+            created_accomplishment = AccomplishmentSchema.model_validate(
+                accomplishment_node
+            )
 
         # Step 2: Extract skills from the accomplishment description
         extracted_data = await skill_extractor_chain.ainvoke(
@@ -70,8 +79,10 @@ async def process_accomplishment(
         with driver.session() as session:
             existing_skill_names = session.read_transaction(graph_crud.get_all_skills)
 
-        final_skill_names_to_link = []  # Store names of skills to be linked to the accomplishment
-        processed_skills_for_response = [] # Store SkillLevel objects for the response
+        final_skill_names_to_link = (
+            []
+        )  # Store names of skills to be linked to the accomplishment
+        processed_skills_for_response = []  # Store SkillLevel objects for the response
 
         for skill_level in extracted_skills:
             candidate_skill_name = skill_level.skill
@@ -101,13 +112,12 @@ async def process_accomplishment(
             # We store the original skill_level (which includes AI's mastery assessment) for the response
             processed_skills_for_response.append(skill_level)
 
-
         # Step 6: Link the newly created accomplishment to each relevant skill
         with driver.session() as session:
             for skill_name_to_link in final_skill_names_to_link:
                 session.write_transaction(
                     graph_crud.link_accomplishment_to_skill,
-                    str(created_accomplishment.id), # Ensure ID is a string
+                    str(created_accomplishment.id),  # Ensure ID is a string
                     skill_name_to_link,
                 )
 
@@ -119,5 +129,73 @@ async def process_accomplishment(
 
     except Exception as e:
         import traceback
+
         traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"An error occurred during accomplishment processing: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"An error occurred during accomplishment processing: {str(e)}",
+        )
+
+
+@router.post(
+    "/accomplishments/{accomplishment_id}/issue-credential",
+    tags=["Accomplishments", "VC"],
+)
+def issue_accomplishment_credential(
+    accomplishment_id: uuid.UUID, db: Session = Depends(get_neo4j_session)
+):
+    """
+    Issues a signed Verifiable Credential (in JWT format) for a specific
+    verified accomplishment.
+    """
+    # 1. Load the issuer's private key
+    try:
+        with open("private_key.json", "r") as f:
+            private_key_data = json.load(f)
+        issuer_key = jwk.JWK(**private_key_data)
+    except FileNotFoundError:
+        raise HTTPException(status_code=500, detail="Issuer key not found.")
+
+    # 2. Fetch accomplishment details from the graph
+    accomplishment = db.read_transaction(
+        graph_crud.get_accomplishment_details, accomplishment_id
+    )
+    if not accomplishment:
+        raise HTTPException(status_code=404, detail="Accomplishment not found.")
+
+    # 3. Construct the VC Payload
+    issuance_date = datetime.datetime.now(datetime.timezone.utc)
+    vc_payload = {
+        "@context": ["https://www.w3.org/2018/credentials/v1"],
+        "id": f"urn:uuid:{uuid.uuid4()}",
+        "type": ["VerifiableCredential", "SkillForgeAccomplishment"],
+        "issuer": "https://skillforge.io",  # SkillForge's identifier
+        "issuanceDate": issuance_date.isoformat(),
+        "credentialSubject": {
+            "id": accomplishment["user"][
+                "id"
+            ],  # This should be the user's DID in the future
+            "accomplishment": {
+                "name": accomplishment["accomplishment"]["name"],
+                "description": accomplishment["accomplishment"]["description"],
+                "achievedOn": accomplishment["accomplishment"]["timestamp"].isoformat(),
+            },
+        },
+    }
+
+    # 4. Construct the JWT Claims, placing the VC inside the 'vc' claim
+    jwt_claims = {
+        "iss": "https://skillforge.io",  # Issuer of the JWT
+        "sub": accomplishment["user"]["id"],  # Subject of the JWT
+        "iat": int(issuance_date.timestamp()),  # Issued at time
+        "vc": vc_payload,
+    }
+
+    # 5. Sign the JWT with the private key
+    signed_vc_jwt = jwt.encode(
+        claims=jwt_claims,
+        key=issuer_key.export_to_pem(private_key=True, password=None),
+        algorithm="ES256",
+    )
+
+    return {"verifiable_credential_jwt": signed_vc_jwt}

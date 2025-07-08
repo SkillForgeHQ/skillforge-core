@@ -12,6 +12,7 @@ neo4j
 passlib[bcrypt]
 python-jose[cryptography]
 python-dotenv
+jwcrypto
 
 # AI and LangChain
 langchain
