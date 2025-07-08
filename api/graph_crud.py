@@ -187,6 +187,34 @@ def set_user_skill_mastery(tx, email: str, skill_name: str, mastery_level: int):
     return result.single()
 
 
+# ---- Accomplishment CRUD Operations ----
+def create_accomplishment(tx, user_email: str, accomplishment_data: dict):
+    """
+    Creates an Accomplishment node and links it to a user.
+    """
+    query = """
+    MATCH (u:User {email: $user_email})
+    CREATE (a:Accomplishment)
+    SET a = $accomplishment_data, a.id = randomUUID(), a.timestamp = datetime()
+    CREATE (u)-[:COMPLETED]->(a)
+    RETURN a
+    """
+    result = tx.run(query, user_email=user_email, accomplishment_data=accomplishment_data)
+    return result.single()["a"]
+
+
+def link_accomplishment_to_skill(tx, accomplishment_id: str, skill_name: str):
+    """
+    Links an Accomplishment to a Skill with a DEMONSTRATES relationship.
+    """
+    query = """
+    MATCH (a:Accomplishment {id: $accomplishment_id})
+    MATCH (s:Skill {name: $skill_name})
+    MERGE (a)-[:DEMONSTRATES]->(s)
+    """
+    tx.run(query, accomplishment_id=accomplishment_id, skill_name=skill_name)
+
+
 def get_user_skills(tx, email):
     """
     Retrieves a list of all skills a user has.

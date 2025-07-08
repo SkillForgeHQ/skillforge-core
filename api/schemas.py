@@ -3,6 +3,7 @@
 from pydantic import BaseModel, Field
 from typing import List, Optional
 import uuid
+from datetime import datetime
 
 
 # This is a base model. It contains fields that are common to other models.
@@ -70,3 +71,17 @@ class UserSkillMasteryCreate(BaseModel):
 class UserPasswordChange(BaseModel):
     current_password: str
     new_password: str
+
+
+# ---- Accomplishment Schemas ----
+class AccomplishmentCreate(BaseModel):
+    name: str
+    description: str
+    proof_url: Optional[str] = None
+
+
+class Accomplishment(AccomplishmentCreate):
+    id: uuid.UUID
+    timestamp: datetime
+
+    model_config = {"from_attributes": True}

@@ -1,7 +1,7 @@
 # api/main.py
 
 from fastapi import FastAPI
-from .routers import skills, users, auth, goals, qa
+from .routers import skills, users, auth, goals, qa, accomplishments
 
 app = FastAPI(
     title="SkillForge API",
@@ -14,6 +14,7 @@ app.include_router(users.router)
 app.include_router(auth.router)
 app.include_router(goals.router)
 app.include_router(qa.router)
+app.include_router(accomplishments.router)
 
 
 @app.get("/", tags=["Root"])
