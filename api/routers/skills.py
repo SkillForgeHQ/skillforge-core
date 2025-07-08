@@ -160,36 +160,3 @@ def get_consolidated_skill_path(
                 detail=f"No learning path found for skill '{skill_name}'. It may be a foundational skill or does not exist.",
             )
     return path
-
-
-@router.post("/{skill_name}/mastery", status_code=201, tags=["Skills (Neo4j)"])
-def add_mastery_to_skill(
-    skill_name: str,
-    mastery: schemas.MasteryCreate,
-    driver: Driver = Depends(get_graph_db_driver),
-):
-    """
-    Adds a mastery level to a specific skill.
-    """
-    with driver.session() as session:
-        # First, check if the skill exists
-        skill_node = session.execute_read(graph_crud.get_skill_by_name, skill_name)
-        if not skill_node:
-            raise HTTPException(
-                status_code=404, detail=f"Skill '{skill_name}' not found."
-            )
-
-        # Create the mastery node and the relationship
-        result = session.execute_write(
-            graph_crud.add_mastery_level_to_skill,
-            skill_name,
-            mastery.level,
-            mastery.name,
-            mastery.description,
-        )
-        if not result:
-            raise HTTPException(
-                status_code=500, detail="Failed to create mastery level."
-            )
-
-    return {"message": f"Mastery level '{mastery.name}' added to skill '{skill_name}'"}

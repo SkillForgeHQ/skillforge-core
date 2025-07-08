@@ -131,63 +131,6 @@ def create_user_node(tx, email):
     return result.single()["u.email"]
 
 
-def add_user_skill(tx, email, skill_name):
-    """
-    Creates a :HAS_SKILL relationship from a User to a Skill.
-    It will create the User and Skill nodes if they don't already exist.
-    """
-    query = """
-    MERGE (u:User {email: $email})
-    MERGE (s:Skill {name: $skill_name})
-    MERGE (u)-[:HAS_SKILL]->(s)
-    """
-    tx.run(query, email=email, skill_name=skill_name)
-
-
-def get_user_skills(tx, email):
-    """
-    Retrieves a list of all skills a user has.
-    """
-    query = """
-    MATCH (u:User {email: $email})-[:HAS_SKILL]->(s:Skill)
-    RETURN s.name AS skill_name
-    """
-    result = tx.run(query, email=email)
-    return [record["skill_name"] for record in result]
-
-
-def create_user_node(tx, email):
-    """
-    Creates or finds a :User node in the graph with a unique email.
-    """
-    query = "MERGE (u:User {email: $email}) RETURN u.email"
-    result = tx.run(query, email=email)
-    return result.single()["u.email"]
-
-
-def set_user_skill_mastery(tx, email: str, skill_name: str, mastery_level: int):
-    """
-    Creates or updates a relationship between a User and a Skill,
-    setting the mastery level on the relationship itself.
-    """
-    query = """
-    MATCH (u:User {email: $email})
-    MATCH (s:Skill {name: $skill_name})
-    // This is the key part: Ensure the skill has a mastery defined at this level
-    MATCH (s)-[:HAS_MASTERY]->(m:Mastery {level: $mastery_level})
-
-    // MERGE the relationship and SET or UPDATE its level property
-    MERGE (u)-[r:HAS_MASTERY_OF]->(s)
-    SET r.level = $mastery_level
-
-    RETURN u.email AS email, r.level AS level, s.name AS skill
-    """
-    result = tx.run(
-        query, email=email, skill_name=skill_name, mastery_level=mastery_level
-    )
-    return result.single()
-
-
 # ---- Accomplishment CRUD Operations ----
 def create_accomplishment(tx, user_email: str, accomplishment_data: dict):
     """
@@ -237,28 +180,6 @@ def remove_user_skill(tx, email, skill_name):
     DELETE r
     """
     tx.run(query, email=email, skill_name=skill_name)
-
-
-def add_mastery_level_to_skill(
-    tx, skill_name: str, level: int, mastery_name: str, description: str
-):
-    """
-    Creates a :Mastery node and links it to an existing :Skill node.
-    """
-    query = """
-    MATCH (s:Skill {name: $skill_name})
-    MERGE (m:Mastery {name: $mastery_name, level: $level, description: $description})
-    MERGE (s)-[:HAS_MASTERY]->(m)
-    RETURN s.name AS skill, m.name AS mastery_name
-    """
-    result = tx.run(
-        query,
-        skill_name=skill_name,
-        level=level,
-        mastery_name=mastery_name,
-        description=description,
-    )
-    return result.single()
 
 
 def get_user_skills_by_accomplishments(tx, email: str) -> List[str]:
