@@ -1,9 +1,10 @@
 # api/schemas.py
 
-from pydantic import BaseModel, Field
-from typing import List, Optional
+from pydantic import BaseModel, Field, field_validator
+from typing import List, Optional, Any
 import uuid
 from datetime import datetime
+from neo4j.time import DateTime as Neo4jDateTime # Import for type checking
 
 
 # This is a base model. It contains fields that are common to other models.
@@ -85,3 +86,10 @@ class Accomplishment(AccomplishmentCreate):
     timestamp: datetime
 
     model_config = {"from_attributes": True}
+
+    @field_validator("timestamp", mode="before")
+    @classmethod
+    def convert_neo4j_datetime(cls, value: Any) -> Any:
+        if isinstance(value, Neo4jDateTime):
+            return value.to_native()
+        return value
