@@ -9,7 +9,7 @@ from ..ai.skill_matcher import find_skill_match
 
 # Database Imports
 from ..database import get_graph_db_driver
-from .. import graph_crud, accomplishment_crud
+from .. import graph_crud
 from ..schemas import AccomplishmentCreate, Accomplishment as AccomplishmentSchema, User
 
 # Security Imports
@@ -67,7 +67,8 @@ async def process_accomplishment(
             )
 
         # Step 3: Get all existing skill names from the database
-        existing_skill_names = accomplishment_crud.get_all_skill_names(driver)
+        with driver.session() as session:
+            existing_skill_names = session.read_transaction(graph_crud.get_all_skills)
 
         final_skill_names_to_link = []  # Store names of skills to be linked to the accomplishment
         processed_skills_for_response = [] # Store SkillLevel objects for the response
@@ -89,12 +90,10 @@ async def process_accomplishment(
                 )
             else:
                 # Step 5b: If it's new, use the candidate name and create it in the DB
-                # This also adds default mastery levels for the new skill.
                 final_skill_name = candidate_skill_name
                 print(f"New skill found: '{final_skill_name}'. Creating in graph...")
-                accomplishment_crud.add_new_skill_with_masteries(
-                    driver, final_skill_name
-                )
+                with driver.session() as session:
+                    session.write_transaction(graph_crud.create_skill, final_skill_name)
                 # Add the new skill to our list of existing skills for the current processing run
                 existing_skill_names.append(final_skill_name)
 
