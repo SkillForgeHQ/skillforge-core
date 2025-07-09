@@ -48,4 +48,4 @@ def create_app():
 # For testing, the factory will be called by the test fixture.
 # For production, uvicorn can be told to use the factory: uvicorn api.main:create_app --factory
 # If a global 'app' is needed for some deployment scripts not using --factory:
-# app = create_app()
+app = create_app()
