@@ -4,9 +4,10 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from jose import JWTError, jwt
 from sqlalchemy.engine import Connection
+from neo4j import GraphDatabase
 
-from .. import crud, schemas, security
-from ..database import get_db
+from .. import crud, schemas, security, graph_crud
+from ..database import get_db, get_graph_db_driver
 
 # This scheme will look for a token in the "Authorization" header.
 # The `tokenUrl` points to our login endpoint.
@@ -47,10 +48,13 @@ async def get_current_user(
 
 @router.post("/token", response_model=schemas.Token)
 def login_for_access_token(
-    conn: Connection = Depends(get_db), form_data: OAuth2PasswordRequestForm = Depends()
+    conn: Connection = Depends(get_db),
+    neo4j_driver: GraphDatabase.driver = Depends(get_graph_db_driver),
+    form_data: OAuth2PasswordRequestForm = Depends(),
 ):
     """
     Logs in a user and returns an access token.
+    If the user does not exist in Neo4j, it creates them.
     """
     user = crud.get_user_by_email(conn, email=form_data.username)
 
@@ -62,6 +66,13 @@ def login_for_access_token(
             detail="Incorrect email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
+
+    # Check and create user in Neo4j if they don't exist
+    with neo4j_driver.session() as session:
+        # Attempt to find the user in Neo4j.
+        # For simplicity, we'll assume a function `get_user_by_email_neo4j` exists or adapt.
+        # For now, we'll directly use create_user_node which handles MERGE logic.
+        session.execute_write(graph_crud.create_user_node, user.email)
 
     access_token = security.create_access_token(data={"sub": user.email})
 
