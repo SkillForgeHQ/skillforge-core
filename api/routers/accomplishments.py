@@ -56,7 +56,7 @@ async def process_accomplishment(
             accomplishment_node = session.write_transaction(
                 graph_crud.create_accomplishment,
                 current_user.email,
-                accomplishment_data.model_dump(),  # Send the whole dict
+                accomplishment_data,  # Pass the Pydantic model instance directly
             )
             # Convert Neo4j Node to Pydantic model. Ensure your Pydantic model can handle this.
             created_accomplishment = AccomplishmentSchema.model_validate(

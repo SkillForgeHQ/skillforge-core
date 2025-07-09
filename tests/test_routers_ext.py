@@ -86,13 +86,24 @@ def test_get_personalized_path_creates_quest(mock_neo4j_driver):
     # args_passed[0] is the transaction function (e.g., graph_crud.create_quest)
     # args_passed[1] is the first arg to that transaction function (e.g., quest_data)
 
-    # Check that the create_quest function was indeed what write_transaction was told to execute
-    assert mock_session.write_transaction.called
-    # The first argument to write_transaction is the function to execute,
-    # the second is the quest_data dict.
-    actual_quest_data_arg = args_passed[1]
-    assert actual_quest_data_arg["name"] == expected_quest_name
-    assert actual_quest_data_arg["description"] is not None
+    # Check that the underlying tx.run (called by graph_crud.create_quest via the side_effect) was called.
+    mock_tx.run.assert_called_once()
+
+    # Inspect the arguments passed to mock_tx.run
+    # The first positional argument to run is the Cypher query string.
+    # The keyword arguments are the parameters for the query.
+    run_args = mock_tx.run.call_args
+    # run_kwargs = run_args.kwargs # if checking kwargs directly
+
+    # Ensure the query for creating a quest was executed
+    assert "CREATE (q:Quest {id: $id, name: $name, description: $description})" in run_args[0][0] # query is first pos arg
+
+    # Check that the parameters passed to the Cypher query are correct
+    # These are passed as keyword arguments to tx.run() in graph_crud.create_quest
+    passed_cypher_params = run_args[1] # keyword args dict
+    assert passed_cypher_params["name"] == expected_quest_name
+    assert expected_quest_description_fragment in passed_cypher_params["description"]
+    assert "id" in passed_cypher_params # create_quest generates an ID
 
 
 # --- Tests for Accomplishments Router (/accomplishments/{accomplishment_id}/issue-credential) ---
@@ -105,16 +116,19 @@ MOCK_PRIVATE_KEY_JWK = {
     "y": "Yxbzv8ruAR_AAB6cPY3-w3ZKHGhE8FhyRRQnKSGjvdE",
     "d": "N66GF1vBaLzbjYAHi7LxosrCGLC_o5uy4QUoxtUJt6w"
 }
+import io # Import io for StringIO
+
 MOCK_PRIVATE_KEY_PEM = jwk.JWK(**MOCK_PRIVATE_KEY_JWK).export_to_pem(private_key=True, password=None)
 
-@patch('builtins.open', new_callable=MagicMock)
+@patch('builtins.open') # Removed new_callable, will assign side_effect
 @patch('os.getenv')
-def test_issue_accomplishment_credential_stores_receipt(mock_getenv, mock_open, mock_neo4j_driver):
-    _, mock_session, mock_tx_graph = mock_neo4j_driver # Renamed mock_tx to mock_tx_graph to avoid clash
+def test_issue_accomplishment_credential_stores_receipt(mock_getenv, mock_open_builtin, mock_neo4j_driver): # Renamed mock_open to mock_open_builtin
+    _, mock_session, mock_tx_graph = mock_neo4j_driver
 
     # Setup mock environment variable and key file
     mock_getenv.return_value = "dummy_key_path.json"
-    mock_open.return_value.read.return_value = json.dumps(MOCK_PRIVATE_KEY_JWK)
+    # Configure mock_open_builtin to return an StringIO object when called
+    mock_open_builtin.return_value = io.StringIO(json.dumps(MOCK_PRIVATE_KEY_JWK))
 
     accomplishment_id = uuid.uuid4()
 
@@ -185,12 +199,17 @@ def test_issue_accomplishment_credential_stores_receipt(mock_getenv, mock_open, 
     # For this test, confirming store_vc_receipt was called is key.
 
 @patch('builtins.open', new_callable=MagicMock)
+@patch('builtins.open') # Ensure this mock is consistent if used
 @patch('os.getenv')
-def test_issue_credential_accomplishment_not_found(mock_getenv, mock_open, mock_neo4j_driver):
-    _, mock_session, mock_tx_graph = mock_neo_driver # Corrected fixture name
+def test_issue_credential_accomplishment_not_found(mock_getenv, mock_open_builtin, mock_neo4j_driver): # mock_open also renamed here
+    _, mock_session, mock_tx_graph = mock_neo4j_driver # Use the correct fixture name
 
     mock_getenv.return_value = "dummy_key_path.json"
-    mock_open.return_value.read.return_value = json.dumps(MOCK_PRIVATE_KEY_JWK)
+    # Ensure mock_open_builtin is configured if 'open' is called in this test path
+    # For this test, 'open' is called if get_accomplishment_details doesn't cause an early exit.
+    # If accomplishment is not found, 'open' might not be reached.
+    # However, to be safe, ensure it's configured like in the previous test if it could be called.
+    mock_open_builtin.return_value = io.StringIO(json.dumps(MOCK_PRIVATE_KEY_JWK))
     accomplishment_id = uuid.uuid4()
 
     # Simulate get_accomplishment_details returning None (accomplishment not found)
@@ -206,11 +225,6 @@ def test_issue_credential_accomplishment_not_found(mock_getenv, mock_open, mock_
 
     # Ensure store_vc_receipt was NOT called
     mock_session.write_transaction.assert_not_called()
-
-# Fixture to correct typo in test_issue_credential_accomplishment_not_found
-@pytest.fixture
-def mock_neo_driver(mock_neo4j_driver):
-    return mock_neo4j_driver
 
 # Cleanup dependency overrides after tests
 def teardown_module(module):
