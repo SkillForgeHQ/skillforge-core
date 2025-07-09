@@ -21,6 +21,7 @@ from jwcrypto import jwk
 import json
 import datetime
 import uuid
+import os # Added for os.getenv
 
 router = APIRouter()
 
@@ -148,13 +149,16 @@ def issue_accomplishment_credential(
     Issues a signed Verifiable Credential (in JWT format) for a specific
     verified accomplishment.
     """
+    # Use an environment variable for the path, defaulting to the local file
+    key_path = os.getenv("PRIVATE_KEY_PATH", "private_key.json")
+
     # 1. Load the issuer's private key
     try:
-        with open("private_key.json", "r") as f:
+        with open(key_path, "r") as f:
             private_key_data = json.load(f)
         issuer_key = jwk.JWK(**private_key_data)
     except FileNotFoundError:
-        raise HTTPException(status_code=500, detail="Issuer key not found.")
+        raise HTTPException(status_code=500, detail=f"Issuer key not found at path: {key_path}")
 
     # 2. Fetch accomplishment details from the graph
     with driver.session() as session:
