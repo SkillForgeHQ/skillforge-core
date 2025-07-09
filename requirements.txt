@@ -9,7 +9,7 @@ psycopg2-binary
 neo4j
 
 # Security and Authentication
-passlib[bcrypt]
+passlib[bcrypt]>=1.7.4
 python-jose[cryptography]
 python-dotenv
 jwcrypto
