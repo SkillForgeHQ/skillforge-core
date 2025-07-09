@@ -101,9 +101,9 @@ def test_get_personalized_path_creates_quest(mock_neo4j_driver):
 MOCK_PRIVATE_KEY_JWK = {
     "kty": "EC",
     "crv": "P-256",
-    "x": "test_x_val", # Replace with actual values if needed for jwcrypto
-    "y": "test_y_val", # Replace with actual values if needed for jwcrypto
-    "d": "test_d_val"  # Replace with actual values if needed for jwcrypto
+    "x": "ajhBzsb5UAuLANzuljVdMTqWrq-AMyrtWJDVgcnislo",
+    "y": "Yxbzv8ruAR_AAB6cPY3-w3ZKHGhE8FhyRRQnKSGjvdE",
+    "d": "N66GF1vBaLzbjYAHi7LxosrCGLC_o5uy4QUoxtUJt6w"
 }
 MOCK_PRIVATE_KEY_PEM = jwk.JWK(**MOCK_PRIVATE_KEY_JWK).export_to_pem(private_key=True, password=None)
 
