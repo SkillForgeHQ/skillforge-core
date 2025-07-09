@@ -68,6 +68,13 @@ class AccomplishmentCreate(BaseModel):
     name: str
     description: str
     proof_url: Optional[str] = None
+    quest_id: Optional[uuid.UUID] = None # <-- ADD THIS
+
+
+class Quest(BaseModel):
+    id: uuid.UUID
+    name: str
+    description: str
 
 
 class Accomplishment(AccomplishmentCreate):

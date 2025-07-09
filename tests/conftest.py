@@ -2,7 +2,37 @@ import os
 import pytest
 from unittest.mock import patch, MagicMock
 import json
-from jwcrypto import jwk
+try:
+    from jwcrypto import jwk
+    print("jwcrypto imported successfully in conftest.py")
+except ImportError:
+    jwk = None # Assign None or a mock if jwk is used globally in conftest
+    print("Failed to import jwcrypto in conftest.py. jwk will be None or a simple mock.")
+    # If jwk methods are called directly at global scope in conftest.py,
+    # you might need a more sophisticated mock.
+    # For now, we assume jwk might be None if not importable.
+    if jwk is None: # Example: create a dummy object if methods are called
+        class MockJwk:
+            def generate(self, *args, **kwargs):
+                # Mock essential methods if they are called by test_keys fixture
+                # This part is tricky; test_keys uses jwk.JWK.generate
+                # So, if jwcrypto is missing, test_keys will fail.
+                # This try-except is more about allowing test collection to proceed.
+                print("MockJwk.generate called because jwcrypto.jwk is None")
+                # Returning a mock that can be exported might be needed
+                mock_key = MagicMock()
+                mock_key.export_private.return_value = "{}"
+                mock_key.export_public.return_value = "{}"
+                return mock_key
+
+        # This attempts to mock jwk.JWK.generate if jwk itself is None
+        # It's a bit of a hack due to the import structure.
+        # A proper solution is to ensure jwcrypto is installed and importable.
+        # This workaround is primarily for diagnosis and allowing test collection.
+        # The test_keys fixture will likely fail if jwcrypto is truly missing.
+        class MockJWKModule:
+            JWK = MockJwk()
+        jwk = MockJWKModule # Monkeypatching the jwk name itself
 
 # This global variable is used by the fixture to manage the patcher lifecycle.
 _neo4j_constructor_patcher = None

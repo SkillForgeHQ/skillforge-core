@@ -23,6 +23,13 @@ def create_app():
     # This might need more careful handling if pytest_configure doesn't run early enough for these.
     # However, Neo4j connections are typically lazy or re-established.
 
+    # Attempt to import jwcrypto to see if it's available to the app runtime
+    try:
+        import jwcrypto
+        print("jwcrypto imported successfully in main app")
+    except ImportError:
+        print("Failed to import jwcrypto in main app")
+
     app = FastAPI(
         title="SkillForge API",
         description="The core API for the SkillForge engine.",

@@ -131,22 +131,61 @@ def create_user_node(tx, email):
     return result.single()["u.email"]
 
 
+import uuid # Added for Quest ID generation
+from .schemas import AccomplishmentCreate # Added for type hinting
+
+# ---- Quest CRUD Operations ----
+def create_quest(tx, quest_data):
+    """Creates a new Quest node and returns it."""
+    new_id = str(uuid.uuid4())
+    query = """
+    CREATE (q:Quest {id: $id, name: $name, description: $description})
+    RETURN q
+    """
+    result = tx.run(query, id=new_id, name=quest_data['name'], description=quest_data['description']).single()
+    return result['q']
+
+
 # ---- Accomplishment CRUD Operations ----
-def create_accomplishment(tx, user_email: str, accomplishment_data: dict):
+def create_accomplishment(tx, user_email: str, accomplishment_data: AccomplishmentCreate):
     """
-    Creates an Accomplishment node and links it to a user.
+    Creates an Accomplishment, links it to the user, and optionally
+    links it to the Quest it fulfills.
     """
+    accomplishment_id = str(uuid.uuid4())
+    # Prepare data for setting properties, excluding user_email and quest_id
+    accomplishment_props = accomplishment_data.model_dump(exclude={'user_email', 'quest_id'})
+
     query = """
     MATCH (u:User {email: $user_email})
-    CREATE (a:Accomplishment)
-    SET a = $accomplishment_data, a.id = randomUUID(), a.timestamp = datetime()
+    CREATE (a:Accomplishment {
+        id: $id,
+        name: $name,
+        description: $description,
+        proof_url: $proof_url,
+        timestamp: datetime()
+    })
     CREATE (u)-[:COMPLETED]->(a)
     RETURN a
     """
-    result = tx.run(
-        query, user_email=user_email, accomplishment_data=accomplishment_data
-    )
-    return result.single()["a"]
+    result = tx.run(query,
+                    user_email=user_email,
+                    id=accomplishment_id,
+                    name=accomplishment_props['name'],
+                    description=accomplishment_props['description'],
+                    proof_url=accomplishment_props['proof_url']
+                    ).single()
+    accomplishment_node = result['a']
+
+    if accomplishment_data.quest_id:
+        link_query = """
+        MATCH (a:Accomplishment {id: $accomplishment_id})
+        MATCH (q:Quest {id: $quest_id})
+        CREATE (a)-[:FULFILLS]->(q)
+        """
+        tx.run(link_query, accomplishment_id=accomplishment_id, quest_id=str(accomplishment_data.quest_id))
+
+    return accomplishment_node
 
 
 def link_accomplishment_to_skill(tx, accomplishment_id: str, skill_name: str):
@@ -207,3 +246,22 @@ def get_accomplishment_details(tx, accomplishment_id):
     if record:
         return {"user": record["u"], "accomplishment": record["a"]}
     return None
+
+
+def store_vc_receipt(tx, accomplishment_id: str, vc_receipt: dict):
+    """
+    Finds the [:COMPLETED] relationship for an accomplishment and adds
+    properties to it to store a receipt of the issued Verifiable Credential.
+    """
+    query = """
+    MATCH (u:User)-[r:COMPLETED]->(a:Accomplishment {id: $accomplishment_id})
+    SET r.vc_id = $vc_id,
+        r.vc_issuanceDate = $vc_issuanceDate
+    RETURN r
+    """
+    tx.run(
+        query,
+        accomplishment_id=str(accomplishment_id), # Ensure accomplishment_id is a string
+        vc_id=vc_receipt["id"],
+        vc_issuanceDate=vc_receipt["issuanceDate"]
+    )

@@ -209,6 +209,20 @@ def issue_accomplishment_credential(
         "vc": vc_payload,
     }
 
+    # NEW STEP: Store a receipt of the VC in the graph *before* returning
+    vc_receipt = {
+        "id": vc_payload["id"],
+        "issuanceDate": vc_payload["issuanceDate"]
+    }
+    # Ensure accomplishment_id is passed as a string if it's a UUID object
+    accomplishment_id_str = str(accomplishment_id)
+    with driver.session() as session:
+        session.write_transaction(
+            graph_crud.store_vc_receipt,
+            accomplishment_id_str,
+            vc_receipt
+        )
+
     # 5. Sign the JWT with the private key
     signed_vc_jwt = jwt.encode(
         claims=jwt_claims,
