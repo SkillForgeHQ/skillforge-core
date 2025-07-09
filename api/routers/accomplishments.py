@@ -166,6 +166,19 @@ def issue_accomplishment_credential(
 
     # 3. Construct the VC Payload
     issuance_date = datetime.datetime.now(datetime.timezone.utc)
+
+    accomplishment_node_data = accomplishment["accomplishment"]
+    user_node_data = accomplishment["user"]
+
+    # Ensure timestamp exists and convert it
+    achieved_on_iso = None
+    if accomplishment_node_data["timestamp"]:
+        # Neo4j DateTime objects need conversion to Python native datetime
+        achieved_on_iso = accomplishment_node_data["timestamp"].to_native().isoformat()
+    else:
+        # Handle cases where timestamp might be unexpectedly missing
+        raise HTTPException(status_code=500, detail="Accomplishment timestamp is missing.")
+
     vc_payload = {
         "@context": ["https://www.w3.org/2018/credentials/v1"],
         "id": f"urn:uuid:{uuid.uuid4()}",
@@ -173,13 +186,12 @@ def issue_accomplishment_credential(
         "issuer": "https://skillforge.io",  # SkillForge's identifier
         "issuanceDate": issuance_date.isoformat(),
         "credentialSubject": {
-            "id": accomplishment["user"][
-                "id"
-            ],  # This should be the user's DID in the future
+            # Use email as a more reliable user identifier from the graph node
+            "id": str(user_node_data["email"]),
             "accomplishment": {
-                "name": accomplishment["accomplishment"]["name"],
-                "description": accomplishment["accomplishment"]["description"],
-                "achievedOn": accomplishment["accomplishment"]["timestamp"].isoformat(),
+                "name": accomplishment_node_data["name"],
+                "description": accomplishment_node_data["description"],
+                "achievedOn": achieved_on_iso,
             },
         },
     }
@@ -187,7 +199,8 @@ def issue_accomplishment_credential(
     # 4. Construct the JWT Claims, placing the VC inside the 'vc' claim
     jwt_claims = {
         "iss": "https://skillforge.io",  # Issuer of the JWT
-        "sub": str(accomplishment["user"]["id"]),  # Subject of the JWT, ensured as string
+        # Use email for subject claim as it's guaranteed on the User graph node
+        "sub": str(user_node_data["email"]),
         "iat": int(issuance_date.timestamp()),  # Issued at time
         "vc": vc_payload,
     }
