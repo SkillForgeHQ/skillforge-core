@@ -78,16 +78,21 @@ def test_get_personalized_path_creates_quest(client_with_mocked_db, mock_neo4j_c
     }
     # Configure the mock transaction's run().single() behavior
     # The create_quest function in graph_crud.py expects tx.run(...).single() to return a dict like {'q': node_data}
-    # This mock_tx.run setup is not strictly necessary for this test with the new strategy,
-    # as we are mocking mock_session.write_transaction.return_value directly.
+    # This mock_tx.run setup is not strictly necessary for this test with the new strategy.
     # However, it doesn't hurt to keep it if other tests use mock_tx.
     mock_run_result = MagicMock()
-    mock_run_result.single.return_value = {'q': mock_created_quest_node}
-    mock_tx.run.return_value = mock_run_result
+    mock_run_result.single.return_value = {'q': mock_created_quest_node} # This is if create_quest was actually called with mock_tx
+    # mock_tx.run.return_value = mock_run_result # Not directly used if we mock write_transaction's result/side_effect
 
-    # Set the return value for mock_session.write_transaction BEFORE the call
-    # This simulates what graph_crud.create_quest (called by the endpoint via write_transaction) would return.
-    mock_session.write_transaction.return_value = mock_created_quest_node
+    # Configure mock_session.write_transaction to return mock_created_quest_node when called.
+    # Using side_effect to be very explicit about the call.
+    def mock_write_transaction_side_effect(func, quest_data_arg, **kwargs):
+        # We can assert here that func is graph_crud.create_quest if needed
+        # and quest_data_arg is what we expect.
+        # For this test, the key is to return the mock_created_quest_node.
+        return mock_created_quest_node
+
+    mock_session.write_transaction.side_effect = mock_write_transaction_side_effect
 
     response = client.post(
         "/goals/personalized-path",
@@ -182,13 +187,20 @@ def test_issue_accomplishment_credential_stores_receipt(mock_getenv, mock_open_b
     }
     mock_user_node_for_details = {"email": mock_user_email}
 
-    mock_session.read_transaction.return_value = {
-        "user": mock_user_node_for_details,
-        "accomplishment": mock_accomplishment_node_for_details
-    }
+    # Define side_effect for read_transaction
+    def mock_read_transaction_side_effect(func, acc_id_arg, **kwargs):
+        # In this test, we expect it to be called to get accomplishment details
+        # and it should return our mocked structure.
+        return {
+            "user": mock_user_node_for_details,
+            "accomplishment": mock_accomplishment_node_for_details
+        }
+    mock_session.read_transaction.side_effect = mock_read_transaction_side_effect
 
-    # mock_session.write_transaction is already a MagicMock, no specific return value needed for store_vc_receipt
-    # as the endpoint doesn't directly use its return.
+    # mock_session.write_transaction is already a MagicMock. For this test, we can also use side_effect
+    # if we need to inspect its arguments or control return, though store_vc_receipt doesn't return.
+    # For now, default MagicMock behavior (returns a new mock if called) is fine for write_transaction here,
+    # as the endpoint doesn't use its return value. We assert it's called later.
 
     response = client.post(f"/accomplishments/{str(accomplishment_id)}/issue-credential")
 
@@ -235,9 +247,9 @@ def test_issue_credential_accomplishment_not_found(mock_getenv, mock_open_builti
     accomplishment_id = uuid.uuid4()
 
     # Simulate get_accomplishment_details returning None (accomplishment not found)
-    # This means tx.run().single() inside get_accomplishment_details would return None
-    # With the new strategy, we mock the return value of read_transaction itself
-    mock_session.read_transaction.return_value = None # Simulate get_accomplishment_details returning None
+    def mock_read_transaction_not_found_side_effect(func, acc_id_arg, **kwargs):
+        return None
+    mock_session.read_transaction.side_effect = mock_read_transaction_not_found_side_effect
 
     response = client.post(f"/accomplishments/{str(accomplishment_id)}/issue-credential")
 
