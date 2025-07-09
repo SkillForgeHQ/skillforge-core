@@ -29,20 +29,33 @@ app.dependency_overrides[get_current_user] = override_get_current_user
 @pytest.fixture(autouse=True)
 def mock_neo4j_driver():
     with patch("api.database.get_graph_db_driver") as mock_get_driver:
-        mock_driver = MagicMock()
-        mock_session = MagicMock()
-        mock_tx = MagicMock() # Mock transaction object
+        mock_driver_instance = MagicMock(name="MockDriverInstance")
+        mock_session_instance = MagicMock(name="MockSessionInstance")
 
-        # Configure session to return the transaction mock
-        mock_session.write_transaction.side_effect = lambda func, *args, **kwargs: func(mock_tx, *args, **kwargs)
-        mock_session.read_transaction.side_effect = lambda func, *args, **kwargs: func(mock_tx, *args, **kwargs)
+        # write_transaction and read_transaction are now direct mocks
+        mock_session_instance.write_transaction = MagicMock(name="MockSessionWriteTransaction")
+        mock_session_instance.read_transaction = MagicMock(name="MockSessionReadTransaction")
 
-        mock_driver.session.return_value = mock_session
-        mock_get_driver.return_value = mock_driver
+        # mock_tx is still needed by graph_crud tests, but router tests won't directly use it for run assertions.
+        # However, if the actual graph_crud functions (if called by a side_effect, which we removed)
+        # need a tx object that can return values (e.g. for create_quest), this would need configuration.
+        # For now, router tests will only check if session methods are called with correct graph_crud funcs.
+        mock_tx_instance = MagicMock(name="MockTxInstance")
 
-        # Store tx on session to allow tests to configure its behavior (e.g., return_value for tx.run().single())
-        mock_session.tx = mock_tx # Make tx accessible for configuration in tests
-        yield mock_driver, mock_session, mock_tx
+        # If graph_crud.create_quest is called (e.g. if we re-add side_effect or call it directly),
+        # it will need its tx.run().single() to return something.
+        # Example:
+        # mock_run_result = MagicMock()
+        # mock_run_result.single.return_value = {'q': {"id": "some_id", "name": "Test", "description": "Test"}}
+        # mock_tx_instance.run.return_value = mock_run_result
+        # This part is more for direct testing of CRUD functions or more complex side_effects.
+
+        mock_driver_instance.session.return_value = mock_session_instance
+        mock_get_driver.return_value = mock_driver_instance
+
+        # Yield the session and tx mocks for tests that might need to configure them
+        # or assert calls on them. Driver mock is less commonly asserted on directly in endpoint tests.
+        yield mock_driver_instance, mock_session_instance, mock_tx_instance
 
 
 # --- Tests for Goals Router (/goals/personalized-path) ---
@@ -78,24 +91,36 @@ def test_get_personalized_path_creates_quest(mock_neo4j_driver):
     assert "id" in quest_response
 
     # Verify that create_quest was called by the endpoint.
-    # The mock_session.write_transaction has a side_effect that calls the graph_crud function with mock_tx.
-    # So we check that mock_tx.run was called, which is the actual Neo4j operation.
-    mock_tx.run.assert_called_once()
+    # The mock_session.write_transaction is now a direct MagicMock.
+    # The endpoint calls session.write_transaction(graph_crud.create_quest, quest_data)
+    # The result of this call is used to create the QuestSchema response.
+    # So, we need to mock the return value of mock_session.write_transaction itself.
+    # This return value should simulate what graph_crud.create_quest would return (a Neo4j Node-like dict).
+    mock_session.write_transaction.return_value = mock_created_quest_node # mock_created_quest_node is already defined in the test
 
-    # Inspect the arguments passed to mock_tx.run
-    # run_args[0] is a tuple of positional arguments (query_string,)
-    # run_args[1] is a dictionary of keyword arguments (params_for_query)
-    run_call_args = mock_tx.run.call_args
+    response = client.post(
+        "/goals/personalized-path",
+        json={"goal_description": goal_description}
+    )
 
-    # Ensure the query for creating a quest was executed
-    actual_query_string = run_call_args[0][0]
-    assert "CREATE (q:Quest {id: $id, name: $name, description: $description})" in actual_query_string
+    assert response.status_code == 200 # Check response first
+    quest_response = response.json()
+    assert quest_response["name"] == expected_quest_name
+    assert expected_quest_description_fragment in quest_response["description"]
+    assert quest_response["id"] == mock_created_quest_node["id"]
 
-    # Check that the parameters passed to the Cypher query are correct
-    passed_cypher_params = run_call_args[1]
-    assert passed_cypher_params["name"] == expected_quest_name
-    assert expected_quest_description_fragment in passed_cypher_params["description"]
-    assert "id" in passed_cypher_params # create_quest generates an ID
+    # Assert that mock_session.write_transaction was called correctly
+    from api import graph_crud # Import for referencing the function object
+    mock_session.write_transaction.assert_called_once()
+    call_args = mock_session.write_transaction.call_args
+
+    # Check the function passed to write_transaction
+    assert call_args[0][0] == graph_crud.create_quest
+
+    # Check the quest_data dict passed to graph_crud.create_quest
+    actual_quest_data = call_args[0][1]
+    assert actual_quest_data["name"] == expected_quest_name
+    assert expected_quest_description_fragment in actual_quest_data["description"]
 
 
 # --- Tests for Accomplishments Router (/accomplishments/{accomplishment_id}/issue-credential) ---
@@ -147,60 +172,38 @@ def test_issue_accomplishment_credential_stores_receipt(mock_getenv, mock_open_b
         "a": mock_accomplishment_details["accomplishment"]
     }
     # This configures the mock_tx_graph that will be passed into get_accomplishment_details
-    mock_tx_graph.run.return_value = mock_run_result_fetch
+    # mock_tx_graph.run.return_value = mock_run_result_fetch # Not needed with new strategy
 
-    # Mock the transaction behavior for store_vc_receipt (called by write_transaction)
-    # store_vc_receipt doesn't return anything, but we can check it was called.
-    # The side_effect of write_transaction is already set up to call the function with mock_tx_graph.
-    # So, graph_crud.store_vc_receipt(mock_tx_graph, ...) will be called.
-    # We don't need a specific return mock for its tx.run() unless it affects subsequent logic.
+    # Configure mock_session.read_transaction to return the accomplishment details
+    # This simulates graph_crud.get_accomplishment_details returning the data
+    mock_session.read_transaction.return_value = mock_accomplishment_details
 
-    # Ensure the mock for get_accomplishment_details is active when the endpoint calls it
-    # The read_transaction side_effect calls get_accomplishment_details with mock_tx_graph
-    # So, mock_tx_graph.run should be called by get_accomplishment_details
+    # mock_session.write_transaction is already a MagicMock, no specific return value needed for store_vc_receipt
+    # as the endpoint doesn't directly use its return.
 
     response = client.post(f"/accomplishments/{str(accomplishment_id)}/issue-credential")
-
-    # Check if get_accomplishment_details query was run
-    # This confirms that the read_transaction part of the endpoint was hit and used our mock_tx_graph
-    get_details_query_found = False
-    for call_args in mock_tx_graph.run.call_args_list:
-        query_string = call_args[0][0] # First positional argument is the query
-        if "MATCH (u:User)-[:COMPLETED]->(a:Accomplishment {id: $accomplishment_id})" in query_string:
-            get_details_query_found = True
-            # Optionally, check parameters if needed:
-            # called_params = call_args[1]
-            # assert called_params['accomplishment_id'] == str(accomplishment_id)
-            break
-    assert get_details_query_found, "The query from get_accomplishment_details was not run on mock_tx_graph."
 
     assert response.status_code == 200
     assert "verifiable_credential_jwt" in response.json()
 
-    # Verify get_accomplishment_details was called
-    # The read_transaction mock is configured to pass mock_tx_graph to the function it calls.
-    # So, we check that mock_tx_graph.run was called with the query from get_accomplishment_details.
-    # This is a bit indirect. A more direct way is to check mock_session.read_transaction.call_args
-    # if we want to verify which function (e.g. graph_crud.get_accomplishment_details) was passed.
+    from api import graph_crud # Import for referencing function objects
 
-    # We expect two calls to tx.run(): one from get_accomplishment_details, one from store_vc_receipt
-    # Let's check the call to store_vc_receipt via write_transaction
-    assert mock_session.write_transaction.called
+    # Verify that read_transaction was called for get_accomplishment_details
+    mock_session.read_transaction.assert_called_once_with(
+        graph_crud.get_accomplishment_details,
+        accomplishment_id  # The endpoint passes the UUID object directly
+    )
 
-    # write_transaction_args[0] is the function (graph_crud.store_vc_receipt)
-    # write_transaction_args[1] is accomplishment_id_str
-    # write_transaction_args[2] is vc_receipt
-    write_transaction_args = mock_session.write_transaction.call_args[0]
+    # Verify that write_transaction was called for store_vc_receipt
+    mock_session.write_transaction.assert_called_once()
+    store_receipt_call_args = mock_session.write_transaction.call_args
 
-    called_func_for_write = write_transaction_args[0]
-    # assert called_func_for_write.__name__ == "store_vc_receipt" # Check it's the right function
+    assert store_receipt_call_args[0][0] == graph_crud.store_vc_receipt
+    assert store_receipt_call_args[0][1] == str(accomplishment_id) # store_vc_receipt gets str
 
-    passed_accomplishment_id_to_store = write_transaction_args[1]
-    passed_vc_receipt = write_transaction_args[2]
-
-    assert passed_accomplishment_id_to_store == str(accomplishment_id)
-    assert "id" in passed_vc_receipt
-    assert "issuanceDate" in passed_vc_receipt
+    vc_receipt_arg = store_receipt_call_args[0][2]
+    assert "id" in vc_receipt_arg
+    assert "issuanceDate" in vc_receipt_arg
 
     # Verify the JWT structure (optional, more of a JWT library test)
     jwt_token = response.json()["verifiable_credential_jwt"]
@@ -222,9 +225,8 @@ def test_issue_credential_accomplishment_not_found(mock_getenv, mock_open_builti
 
     # Simulate get_accomplishment_details returning None (accomplishment not found)
     # This means tx.run().single() inside get_accomplishment_details would return None
-    mock_run_result_fetch_notfound = MagicMock()
-    mock_run_result_fetch_notfound.single.return_value = None # Simulate no record found
-    mock_tx_graph.run.return_value = mock_run_result_fetch_notfound
+    # With the new strategy, we mock the return value of read_transaction itself
+    mock_session.read_transaction.return_value = None # Simulate get_accomplishment_details returning None
 
     response = client.post(f"/accomplishments/{str(accomplishment_id)}/issue-credential")
 
