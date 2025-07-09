@@ -75,9 +75,16 @@ def test_get_personalized_path_creates_quest(mock_neo4j_driver):
     }
     # Configure the mock transaction's run().single() behavior
     # The create_quest function in graph_crud.py expects tx.run(...).single() to return a dict like {'q': node_data}
+    # This mock_tx.run setup is not strictly necessary for this test with the new strategy,
+    # as we are mocking mock_session.write_transaction.return_value directly.
+    # However, it doesn't hurt to keep it if other tests use mock_tx.
     mock_run_result = MagicMock()
     mock_run_result.single.return_value = {'q': mock_created_quest_node}
     mock_tx.run.return_value = mock_run_result
+
+    # Set the return value for mock_session.write_transaction BEFORE the call
+    # This simulates what graph_crud.create_quest (called by the endpoint via write_transaction) would return.
+    mock_session.write_transaction.return_value = mock_created_quest_node
 
     response = client.post(
         "/goals/personalized-path",
@@ -88,26 +95,7 @@ def test_get_personalized_path_creates_quest(mock_neo4j_driver):
     quest_response = response.json()
     assert quest_response["name"] == expected_quest_name
     assert expected_quest_description_fragment in quest_response["description"]
-    assert "id" in quest_response
-
-    # Verify that create_quest was called by the endpoint.
-    # The mock_session.write_transaction is now a direct MagicMock.
-    # The endpoint calls session.write_transaction(graph_crud.create_quest, quest_data)
-    # The result of this call is used to create the QuestSchema response.
-    # So, we need to mock the return value of mock_session.write_transaction itself.
-    # This return value should simulate what graph_crud.create_quest would return (a Neo4j Node-like dict).
-    mock_session.write_transaction.return_value = mock_created_quest_node # mock_created_quest_node is already defined in the test
-
-    response = client.post(
-        "/goals/personalized-path",
-        json={"goal_description": goal_description}
-    )
-
-    assert response.status_code == 200 # Check response first
-    quest_response = response.json()
-    assert quest_response["name"] == expected_quest_name
-    assert expected_quest_description_fragment in quest_response["description"]
-    assert quest_response["id"] == mock_created_quest_node["id"]
+    assert quest_response["id"] == mock_created_quest_node["id"] # ID should now match
 
     # Assert that mock_session.write_transaction was called correctly
     from api import graph_crud # Import for referencing the function object
@@ -176,7 +164,23 @@ def test_issue_accomplishment_credential_stores_receipt(mock_getenv, mock_open_b
 
     # Configure mock_session.read_transaction to return the accomplishment details
     # This simulates graph_crud.get_accomplishment_details returning the data
-    mock_session.read_transaction.return_value = mock_accomplishment_details
+    # The timestamp needs to be mockable to call .to_native().isoformat()
+    mock_timestamp = MagicMock(name="MockTimestamp")
+    mock_native_datetime = datetime.datetime.now(datetime.timezone.utc)
+    mock_timestamp.to_native.return_value = mock_native_datetime
+
+    mock_accomplishment_node_for_details = {
+        "id": str(accomplishment_id),
+        "name": "Test Credential Accomplishment",
+        "description": "Details for VC.",
+        "timestamp": mock_timestamp
+    }
+    mock_user_node_for_details = {"email": mock_user_email}
+
+    mock_session.read_transaction.return_value = {
+        "user": mock_user_node_for_details,
+        "accomplishment": mock_accomplishment_node_for_details
+    }
 
     # mock_session.write_transaction is already a MagicMock, no specific return value needed for store_vc_receipt
     # as the endpoint doesn't directly use its return.
