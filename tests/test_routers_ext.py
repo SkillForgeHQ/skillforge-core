@@ -77,30 +77,22 @@ def test_get_personalized_path_creates_quest(mock_neo4j_driver):
     assert expected_quest_description_fragment in quest_response["description"]
     assert "id" in quest_response
 
-    # Verify that create_quest was called by the endpoint via session.write_transaction
-    # The first argument to write_transaction is the function (graph_crud.create_quest)
-    # The subsequent arguments are what's passed to that function
-    # func_called = mock_session.write_transaction.call_args[0][0] # The function itself
-    args_passed = mock_session.write_transaction.call_args[0] # All positional args to write_transaction
-
-    # args_passed[0] is the transaction function (e.g., graph_crud.create_quest)
-    # args_passed[1] is the first arg to that transaction function (e.g., quest_data)
-
-    # Check that the underlying tx.run (called by graph_crud.create_quest via the side_effect) was called.
+    # Verify that create_quest was called by the endpoint.
+    # The mock_session.write_transaction has a side_effect that calls the graph_crud function with mock_tx.
+    # So we check that mock_tx.run was called, which is the actual Neo4j operation.
     mock_tx.run.assert_called_once()
 
     # Inspect the arguments passed to mock_tx.run
-    # The first positional argument to run is the Cypher query string.
-    # The keyword arguments are the parameters for the query.
-    run_args = mock_tx.run.call_args
-    # run_kwargs = run_args.kwargs # if checking kwargs directly
+    # run_args[0] is a tuple of positional arguments (query_string,)
+    # run_args[1] is a dictionary of keyword arguments (params_for_query)
+    run_call_args = mock_tx.run.call_args
 
     # Ensure the query for creating a quest was executed
-    assert "CREATE (q:Quest {id: $id, name: $name, description: $description})" in run_args[0][0] # query is first pos arg
+    actual_query_string = run_call_args[0][0]
+    assert "CREATE (q:Quest {id: $id, name: $name, description: $description})" in actual_query_string
 
     # Check that the parameters passed to the Cypher query are correct
-    # These are passed as keyword arguments to tx.run() in graph_crud.create_quest
-    passed_cypher_params = run_args[1] # keyword args dict
+    passed_cypher_params = run_call_args[1]
     assert passed_cypher_params["name"] == expected_quest_name
     assert expected_quest_description_fragment in passed_cypher_params["description"]
     assert "id" in passed_cypher_params # create_quest generates an ID
@@ -163,7 +155,24 @@ def test_issue_accomplishment_credential_stores_receipt(mock_getenv, mock_open_b
     # So, graph_crud.store_vc_receipt(mock_tx_graph, ...) will be called.
     # We don't need a specific return mock for its tx.run() unless it affects subsequent logic.
 
+    # Ensure the mock for get_accomplishment_details is active when the endpoint calls it
+    # The read_transaction side_effect calls get_accomplishment_details with mock_tx_graph
+    # So, mock_tx_graph.run should be called by get_accomplishment_details
+
     response = client.post(f"/accomplishments/{str(accomplishment_id)}/issue-credential")
+
+    # Check if get_accomplishment_details query was run
+    # This confirms that the read_transaction part of the endpoint was hit and used our mock_tx_graph
+    get_details_query_found = False
+    for call_args in mock_tx_graph.run.call_args_list:
+        query_string = call_args[0][0] # First positional argument is the query
+        if "MATCH (u:User)-[:COMPLETED]->(a:Accomplishment {id: $accomplishment_id})" in query_string:
+            get_details_query_found = True
+            # Optionally, check parameters if needed:
+            # called_params = call_args[1]
+            # assert called_params['accomplishment_id'] == str(accomplishment_id)
+            break
+    assert get_details_query_found, "The query from get_accomplishment_details was not run on mock_tx_graph."
 
     assert response.status_code == 200
     assert "verifiable_credential_jwt" in response.json()
@@ -198,11 +207,10 @@ def test_issue_accomplishment_credential_stores_receipt(mock_getenv, mock_open_b
     # Here you could decode and verify claims if needed, but that tests JWT logic more than the endpoint's new step
     # For this test, confirming store_vc_receipt was called is key.
 
-@patch('builtins.open', new_callable=MagicMock)
-@patch('builtins.open') # Ensure this mock is consistent if used
+@patch('builtins.open')
 @patch('os.getenv')
-def test_issue_credential_accomplishment_not_found(mock_getenv, mock_open_builtin, mock_neo4j_driver): # mock_open also renamed here
-    _, mock_session, mock_tx_graph = mock_neo4j_driver # Use the correct fixture name
+def test_issue_credential_accomplishment_not_found(mock_getenv, mock_open_builtin, mock_neo4j_driver):
+    _, mock_session, mock_tx_graph = mock_neo4j_driver
 
     mock_getenv.return_value = "dummy_key_path.json"
     # Ensure mock_open_builtin is configured if 'open' is called in this test path
