@@ -86,13 +86,9 @@ def test_get_personalized_path_creates_quest(client_with_mocked_db, mock_neo4j_c
 
     # Configure mock_session.write_transaction to return mock_created_quest_node when called.
     # Using side_effect to be very explicit about the call.
-    def mock_write_transaction_side_effect(func, quest_data_arg, **kwargs):
-        # We can assert here that func is graph_crud.create_quest if needed
-        # and quest_data_arg is what we expect.
-        # For this test, the key is to return the mock_created_quest_node.
-        return mock_created_quest_node
-
-    mock_session.write_transaction.side_effect = mock_write_transaction_side_effect
+    # Let the side_effect be a MagicMock that itself has a return_value.
+    mock_callable_for_side_effect = MagicMock(name="WriteTransactionSideEffectCallable", return_value=mock_created_quest_node)
+    mock_session.write_transaction.side_effect = mock_callable_for_side_effect
 
     response = client.post(
         "/goals/personalized-path",
@@ -187,15 +183,13 @@ def test_issue_accomplishment_credential_stores_receipt(mock_getenv, mock_open_b
     }
     mock_user_node_for_details = {"email": mock_user_email}
 
-    # Define side_effect for read_transaction
-    def mock_read_transaction_side_effect(func, acc_id_arg, **kwargs):
-        # In this test, we expect it to be called to get accomplishment details
-        # and it should return our mocked structure.
-        return {
-            "user": mock_user_node_for_details,
-            "accomplishment": mock_accomplishment_node_for_details
-        }
-    mock_session.read_transaction.side_effect = mock_read_transaction_side_effect
+    # Define side_effect for read_transaction using a MagicMock
+    read_tx_payload = {
+        "user": mock_user_node_for_details,
+        "accomplishment": mock_accomplishment_node_for_details
+    }
+    mock_callable_for_read_side_effect = MagicMock(name="ReadTransactionSideEffectCallable", return_value=read_tx_payload)
+    mock_session.read_transaction.side_effect = mock_callable_for_read_side_effect
 
     # mock_session.write_transaction is already a MagicMock. For this test, we can also use side_effect
     # if we need to inspect its arguments or control return, though store_vc_receipt doesn't return.
@@ -247,9 +241,8 @@ def test_issue_credential_accomplishment_not_found(mock_getenv, mock_open_builti
     accomplishment_id = uuid.uuid4()
 
     # Simulate get_accomplishment_details returning None (accomplishment not found)
-    def mock_read_transaction_not_found_side_effect(func, acc_id_arg, **kwargs):
-        return None
-    mock_session.read_transaction.side_effect = mock_read_transaction_not_found_side_effect
+    mock_callable_for_read_not_found = MagicMock(name="ReadTransactionNotFoundSideEffect", return_value=None)
+    mock_session.read_transaction.side_effect = mock_callable_for_read_not_found
 
     response = client.post(f"/accomplishments/{str(accomplishment_id)}/issue-credential")
 
