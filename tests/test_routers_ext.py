@@ -25,42 +25,45 @@ async def override_get_current_user():
 app.dependency_overrides[get_current_user] = override_get_current_user
 
 
+from api.database import get_graph_db_driver # Import for dependency override
+
 # --- Mocking Neo4j Driver and Session ---
-@pytest.fixture(autouse=True)
-def mock_neo4j_driver():
-    with patch("api.database.get_graph_db_driver") as mock_get_driver:
-        mock_driver_instance = MagicMock(name="MockDriverInstance")
-        mock_session_instance = MagicMock(name="MockSessionInstance")
+@pytest.fixture(scope="function") # Changed to function scope, no longer autouse
+def mock_neo4j_components(): # Renamed to avoid confusion, yields components
+    mock_driver_instance = MagicMock(name="MockDriverInstance")
+    mock_session_instance = MagicMock(name="MockSessionInstance")
+    mock_tx_instance = MagicMock(name="MockTxInstance")
 
-        # write_transaction and read_transaction are now direct mocks
-        mock_session_instance.write_transaction = MagicMock(name="MockSessionWriteTransaction")
-        mock_session_instance.read_transaction = MagicMock(name="MockSessionReadTransaction")
+    mock_session_instance.write_transaction = MagicMock(name="MockSessionWriteTransaction")
+    mock_session_instance.read_transaction = MagicMock(name="MockSessionReadTransaction")
 
-        # mock_tx is still needed by graph_crud tests, but router tests won't directly use it for run assertions.
-        # However, if the actual graph_crud functions (if called by a side_effect, which we removed)
-        # need a tx object that can return values (e.g. for create_quest), this would need configuration.
-        # For now, router tests will only check if session methods are called with correct graph_crud funcs.
-        mock_tx_instance = MagicMock(name="MockTxInstance")
+    mock_driver_instance.session.return_value = mock_session_instance
 
-        # If graph_crud.create_quest is called (e.g. if we re-add side_effect or call it directly),
-        # it will need its tx.run().single() to return something.
-        # Example:
-        # mock_run_result = MagicMock()
-        # mock_run_result.single.return_value = {'q': {"id": "some_id", "name": "Test", "description": "Test"}}
-        # mock_tx_instance.run.return_value = mock_run_result
-        # This part is more for direct testing of CRUD functions or more complex side_effects.
+    # This fixture now just provides the components. Override will be done in tests.
+    yield mock_driver_instance, mock_session_instance, mock_tx_instance
 
-        mock_driver_instance.session.return_value = mock_session_instance
-        mock_get_driver.return_value = mock_driver_instance
 
-        # Yield the session and tx mocks for tests that might need to configure them
-        # or assert calls on them. Driver mock is less commonly asserted on directly in endpoint tests.
-        yield mock_driver_instance, mock_session_instance, mock_tx_instance
+@pytest.fixture(scope="function")
+def client_with_mocked_db(mock_neo4j_components): # This fixture will set up the override
+    mock_driver, _, _ = mock_neo4j_components # We only need the driver for the override lambda
+
+    # Define a lambda that returns our mock_driver for the dependency
+    override_get_driver = lambda: mock_driver
+
+    # Apply the dependency override
+    app.dependency_overrides[get_graph_db_driver] = override_get_driver
+
+    yield client # Yield the global test client, now using the overridden app dependency
+
+    # Clean up the override after the test
+    del app.dependency_overrides[get_graph_db_driver]
 
 
 # --- Tests for Goals Router (/goals/personalized-path) ---
-def test_get_personalized_path_creates_quest(mock_neo4j_driver):
-    _, mock_session, mock_tx = mock_neo4j_driver
+def test_get_personalized_path_creates_quest(client_with_mocked_db, mock_neo4j_components):
+    # client_with_mocked_db ensures app used by 'client' has the override
+    # mock_neo4j_components provides access to the session and tx mocks
+    _, mock_session, mock_tx = mock_neo4j_components
 
     goal_description = "Learn advanced Python programming"
     expected_quest_name = f"Personalized Quest for {mock_user_email}"
@@ -125,10 +128,12 @@ import io # Import io for StringIO
 
 MOCK_PRIVATE_KEY_PEM = jwk.JWK(**MOCK_PRIVATE_KEY_JWK).export_to_pem(private_key=True, password=None)
 
-@patch('builtins.open') # Removed new_callable, will assign side_effect
+@patch('builtins.open')
 @patch('os.getenv')
-def test_issue_accomplishment_credential_stores_receipt(mock_getenv, mock_open_builtin, mock_neo4j_driver): # Renamed mock_open to mock_open_builtin
-    _, mock_session, mock_tx_graph = mock_neo4j_driver
+def test_issue_accomplishment_credential_stores_receipt(mock_getenv, mock_open_builtin, client_with_mocked_db, mock_neo4j_components):
+    # client_with_mocked_db ensures app used by 'client' has the override
+    # mock_neo4j_components provides access to the session and tx mocks
+    _, mock_session, mock_tx_graph = mock_neo4j_components # Use mock_neo4j_components
 
     # Setup mock environment variable and key file
     mock_getenv.return_value = "dummy_key_path.json"
@@ -216,8 +221,10 @@ def test_issue_accomplishment_credential_stores_receipt(mock_getenv, mock_open_b
 
 @patch('builtins.open')
 @patch('os.getenv')
-def test_issue_credential_accomplishment_not_found(mock_getenv, mock_open_builtin, mock_neo4j_driver):
-    _, mock_session, mock_tx_graph = mock_neo4j_driver
+def test_issue_credential_accomplishment_not_found(mock_getenv, mock_open_builtin, client_with_mocked_db, mock_neo4j_components):
+    # client_with_mocked_db ensures app used by 'client' has the override
+    # mock_neo4j_components provides access to the session and tx mocks
+    _, mock_session, mock_tx_graph = mock_neo4j_components # Use mock_neo4j_components
 
     mock_getenv.return_value = "dummy_key_path.json"
     # Ensure mock_open_builtin is configured if 'open' is called in this test path
