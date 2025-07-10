@@ -198,13 +198,10 @@ def test_process_accomplishment_with_quest_id(monkeypatch, clean_db_client, test
         assert str(kwargs.get("quest_id")) == quest_id
         assert args[1] == user_email
 
-        # Corrected assertion for args[2]
-        # It should contain user_email because AccomplishmentCreate includes it
         expected_crud_payload_dict = {
             "user_email": user_email,
             "name": accomplishment_payload["name"],
             "description": accomplishment_payload["description"],
-            # proof_url is optional and not in payload, so it won't be in model_dump(exclude_unset=True)
         }
         assert args[2] == expected_crud_payload_dict
 
@@ -229,21 +226,15 @@ def test_process_accomplishment_non_existent_user(clean_db_client, monkeypatch):
     user_email_for_test = f"user.stateful.mock.{unique_id}@skillforge.io"
     user_password = "password123"
 
-    # UserCreate schema does not require 'name' but our test payload for /users/ includes it.
-    # The /users/ endpoint should ideally ignore extra fields or UserCreate should include 'name' if it's stored.
-    # For now, we assume /users/ POST correctly creates the user and returns data for login.
-    user_payload_for_creation = {"email": user_email_for_test, "name": "Stateful Mock Test User", "password": user_password}
+    # UserCreate schema does not require 'name'
+    user_payload_for_creation = {"email": user_email_for_test, "password": user_password}
     user_creation_response = client.post("/users/", json=user_payload_for_creation)
     assert user_creation_response.status_code == 201, f"User creation failed: {user_creation_response.text}"
 
     created_user_response_json = user_creation_response.json()
-    # Data for creating api_schemas.User instance. It must match fields in api_schemas.User
-    # api_schemas.User has: id, email, is_active.
-    # The /users/ POST response (schemas.User) returns id, email, is_active.
     created_user_data_for_mock = {
         "id": created_user_response_json["id"],
         "email": created_user_response_json["email"],
-        # "name" is not part of schemas.User, so not needed here for the Pydantic model
         "is_active": created_user_response_json.get("is_active", True)
     }
 
@@ -265,16 +256,17 @@ def test_process_accomplishment_non_existent_user(clean_db_client, monkeypatch):
 
     counter = CallCounter()
 
-    def mock_get_user_by_email_stateful(db_conn, *, email):
+    # Corrected signature: email_arg is now positional
+    def mock_get_user_by_email_stateful(db_conn, email_arg):
         counter.increment()
-        if email == user_email_for_test:
+        if email_arg == user_email_for_test:
             if counter.current_count() == 1:
-                # Return a Pydantic User model instance for the auth layer
-                # This dict must match the fields of api_schemas.User for successful validation
                 return api_schemas.User(**created_user_data_for_mock)
             elif counter.current_count() == 2:
                 return None
-        return original_api_crud_get_user_by_email(db_conn, email=email)
+        # Fallback for original function needs to match its signature
+        return original_api_crud_get_user_by_email(db_conn, email_arg)
+
 
     monkeypatch.setattr("api.crud.get_user_by_email", mock_get_user_by_email_stateful)
 
