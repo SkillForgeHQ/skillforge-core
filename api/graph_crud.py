@@ -243,3 +243,22 @@ def get_accomplishment_details(tx, accomplishment_id):
     if record:
         return {"user": record["u"], "accomplishment": record["a"]}
     return None
+
+
+def store_vc_receipt(tx, accomplishment_id, vc_receipt):
+    """
+    Finds the [:COMPLETED] relationship for an accomplishment and adds
+    properties to it to store a receipt of the issued Verifiable Credential.
+    """
+    query = """
+    MATCH (u:User)-[r:COMPLETED]->(a:Accomplishment {id: $accomplishment_id})
+    SET r.vc_id = $vc_id,
+        r.vc_issuanceDate = $vc_issuanceDate
+    RETURN r
+    """
+    tx.run(
+        query,
+        accomplishment_id=str(accomplishment_id),
+        vc_id=vc_receipt["id"],
+        vc_issuanceDate=vc_receipt["issuanceDate"]
+    )
