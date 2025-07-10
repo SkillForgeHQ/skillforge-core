@@ -41,6 +41,52 @@ def test_create_quest(mock_tx):
     assert result["id"] == expected_quest_id
     assert result["name"] == quest_data["name"]
 
+# Import the new function we want to test
+from api.graph_crud import create_quest_and_link_to_user
+
+def test_create_quest_and_link_to_user(mock_tx, mocker): # Added mocker
+    quest_data = {"name": "Linked Test Quest", "description": "A quest for testing user linking."}
+    user_email = "user@example.com"
+    # We'll generate a UUID in the test to simulate the one generated in the function,
+    # and ensure the mock returns it, so we can verify the linking query.
+    expected_quest_id_str = str(uuid.uuid4())
+
+    # Mock the first tx.run call (Quest creation)
+    # It should return a dictionary that simulates a Neo4j Node.
+    mock_quest_node = {"id": expected_quest_id_str, **quest_data}
+
+    # The side_effect will allow us to mock different return values for consecutive calls
+    mock_tx.run.side_effect = [
+        mocker.Mock(single=mocker.Mock(return_value={'q': mock_quest_node})), # For CREATE (q:Quest)
+        mocker.Mock()  # For MERGE (u)-[:HAS_QUEST]->(q)
+    ]
+
+    result_quest_node = create_quest_and_link_to_user(mock_tx, quest_data, user_email)
+
+    assert mock_tx.run.call_count == 2
+    calls = mock_tx.run.call_args_list
+
+    # Call 1: Create Quest
+    args_quest_call, kwargs_quest_call = calls[0]
+    assert "CREATE (q:Quest {id: $id, name: $name, description: $description})" in args_quest_call[0]
+    assert kwargs_quest_call['id'] == expected_quest_id_str # The function generates its own ID
+    assert kwargs_quest_call['name'] == quest_data['name']
+    assert kwargs_quest_call['description'] == quest_data['description']
+
+    # Call 2: Link User to Quest
+    args_link_call, kwargs_link_call = calls[1]
+    assert "MATCH (u:User {email: $user_email})" in args_link_call[0]
+    assert "MATCH (q:Quest {id: $quest_id})" in args_link_call[0]
+    assert "MERGE (u)-[:HAS_QUEST]->(q)" in args_link_call[0]
+    assert kwargs_link_call['user_email'] == user_email
+    assert kwargs_link_call['quest_id'] == expected_quest_id_str # Should use the ID from the created quest
+
+    # Check the returned quest node properties
+    assert result_quest_node['id'] == expected_quest_id_str
+    assert result_quest_node['name'] == quest_data['name']
+    assert result_quest_node['description'] == quest_data['description']
+
+
 def test_create_accomplishment_without_quest(mock_tx):
     user_email = "test@example.com"
     accomplishment_data = {"name": "Test Accomplishment", "description": "Done something."}
