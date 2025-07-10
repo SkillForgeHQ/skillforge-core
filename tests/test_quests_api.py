@@ -8,25 +8,35 @@ client = TestClient(app)
 
 @pytest.fixture
 def mock_graph_db_session_for_quests(mocker):
-    mock_session = mocker.MagicMock()
+    # This is the mock session object that the endpoint will receive
+    the_mock_session = mocker.MagicMock(name="THE_MOCK_SESSION_INSTANCE")
 
-    # Keep the logic for a successful transaction if needed by default
-    def successful_write_transaction(func, quest_data_dict):
+    # Configure its write_transaction method's default behavior for successful calls
+    def successful_write_transaction_logic(func_arg, data_arg):
+        # This is the actual logic that runs when write_transaction is called successfully
         return {
             "id": uuid.uuid4(),
-            "name": quest_data_dict["name"],
-            "description": quest_data_dict["description"]
+            "name": data_arg["name"],
+            "description": data_arg["description"]
         }
 
-    # Assign a MagicMock to write_transaction and set its side_effect
-    mock_session.write_transaction = mocker.MagicMock(side_effect=successful_write_transaction)
+    # Make .write_transaction a MagicMock itself, so we can assert calls on it,
+    # and control its return_value/side_effect per test.
+    the_mock_session.write_transaction = mocker.MagicMock(
+        name="MOCK_WRITE_TRANSACTION",
+        side_effect=successful_write_transaction_logic # Default behavior
+    )
 
-    # Mock the get_graph_db_session dependency
-    # This requires knowing how get_graph_db_session is structured.
-    # If it's a context manager:
-    mock_db_conn_manager = mocker.patch("api.routers.quests.get_graph_db_session")
-    mock_db_conn_manager.return_value.__enter__.return_value = mock_session
-    return mock_session
+    # Now, mock the get_graph_db_session dependency in the router
+    # get_graph_db_session is a generator function.
+    # The mock_target needs to be a function that returns a generator that yields our mock session.
+    def mock_get_session_generator_func():
+        yield the_mock_session
+
+    patched_get_session = mocker.patch("api.routers.quests.get_graph_db_session")
+    patched_get_session.return_value = mock_get_session_generator_func()
+
+    return the_mock_session # The test functions will receive this same mock_session instance
 
 
 def test_create_quest_endpoint(mock_graph_db_session_for_quests, mocker):

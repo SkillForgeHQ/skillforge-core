@@ -206,7 +206,10 @@ def test_process_accomplishment_with_quest_id(monkeypatch, clean_db_client, test
         args, kwargs = mock_create_accomplishment_crud.call_args
         # args are (tx, user_email, accomplishment_data_dict)
         # kwargs are {quest_id: ...}
-        assert kwargs.get("quest_id") == quest_id
+        # The quest_id from the payload (string) is converted to UUID by Pydantic model AccomplishmentCreate
+        # So, when it's passed to the CRUD function, it's a UUID object.
+        # We compare it with the original string quest_id from the test.
+        assert str(kwargs.get("quest_id")) == quest_id
         # Ensure user_email is also passed
         assert args[1] == user_email
         # Ensure the main payload (without quest_id) is passed as accomplishment_data
