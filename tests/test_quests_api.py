@@ -10,7 +10,6 @@ client = TestClient(app)
 def mock_graph_db_session_for_quests(mocker):
     the_mock_session = mocker.MagicMock(name="THE_MOCK_SESSION_INSTANCE")
 
-    # Default successful behavior for write_transaction
     default_side_effect = lambda func, data_dict: {
         "id": uuid.uuid4(),
         "name": data_dict["name"],
@@ -21,15 +20,22 @@ def mock_graph_db_session_for_quests(mocker):
         side_effect=default_side_effect
     )
 
-    # This function will replace the actual get_graph_db_session
-    # It needs to be a generator function, yielding the mock session
-    def mock_get_session_func():
+    # This function will be the override for get_graph_db_session
+    def override_get_graph_db_session():
         yield the_mock_session
 
-    # Patch the get_graph_db_session where it's imported in the quests router module
-    mocker.patch("api.routers.quests.get_graph_db_session", new=mock_get_session_func)
+    # Import app and the original dependency for overriding
+    from api.main import app as main_app # renamed to avoid conflict if client uses 'app'
+    from api.database import get_graph_db_session as original_get_graph_db_session
 
-    return the_mock_session
+    # Store original overrides if any, to restore them
+    original_overrides = main_app.dependency_overrides.copy()
+    main_app.dependency_overrides[original_get_graph_db_session] = override_get_graph_db_session
+
+    yield the_mock_session # Yield the mock session for the test to use
+
+    # Clean up the override after the test by restoring original state
+    main_app.dependency_overrides = original_overrides
 
 
 def test_create_quest_endpoint(mock_graph_db_session_for_quests, mocker):
