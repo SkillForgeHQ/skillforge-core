@@ -2,6 +2,7 @@ import pytest
 import uuid
 from fastapi.testclient import TestClient
 from jose import jwt
+from api import schemas as api_schemas # Ensure this import is present
 # Removed: from api.main import app
 
 # client = TestClient(app) # Use a fresh client for this test to avoid state issues
@@ -293,6 +294,7 @@ def test_process_accomplishment_non_existent_user(clean_db_client, monkeypatch):
     from unittest.mock import AsyncMock, MagicMock
     from api.ai.schemas import ExtractedSkills, SkillLevel, SkillMatch
     from api import crud # Import crud to get its original function
+    #from api import schemas as api_schemas # Already imported at the top
 
     mock_chain_instance = MagicMock()
     mock_extracted_skills_response = ExtractedSkills(skills=[]) # No skills needed for this test
@@ -311,12 +313,16 @@ def test_process_accomplishment_non_existent_user(clean_db_client, monkeypatch):
     user_payload = {"email": user_email_for_test, "name": "Stateful Mock Test User", "password": user_password}
     user_response = client.post("/users/", json=user_payload)
     assert user_response.status_code == 201, f"User creation failed: {user_response.text}"
-    # We need to simulate a RowProxy object that the original get_user_by_email returns.
-    # A simple dict or Pydantic model might not have all attributes accessed by User.model_validate.
-    # Fetching the user properly and then using its attributes is safer.
-    # However, the /users/ endpoint returns a User schema, not a RowProxy.
-    # For the mock, returning a dict that can be validated by schemas.User should be sufficient.
-    created_user_data_for_mock = {"id": user_response.json()["id"], "email": user_email_for_test, "hashed_password": "mock_hashed_password", "is_active": True}
+
+    created_user_response_data = user_response.json()
+    # Ensure all fields required by schemas.User are present for Pydantic validation
+    created_user_data_for_mock = {
+        "id": created_user_response_data["id"],
+        "email": created_user_response_data["email"],
+        "name": created_user_response_data["name"], # Added name
+        "hashed_password": "mock_hashed_password", # Mocked, as it's not returned by /users/
+        "is_active": created_user_response_data.get("is_active", True) # Default if not present
+    }
 
 
     # Log in to get a token
@@ -329,10 +335,6 @@ def test_process_accomplishment_non_existent_user(clean_db_client, monkeypatch):
     # Store the original crud.get_user_by_email from api.crud
     original_api_crud_get_user_by_email = crud.get_user_by_email
 
-    call_count = 0 # This needs to be part of the mock function's scope or a class attribute if mock is a class method
-
-    # Define the stateful mock function within the test function's scope
-    # so it can access 'call_count' and 'user_email_for_test' and 'created_user_data_for_mock'
     class CallCounter:
         def __init__(self):
             self.count = 0
@@ -348,8 +350,8 @@ def test_process_accomplishment_non_existent_user(clean_db_client, monkeypatch):
 
         if email == user_email_for_test:
             if counter.current_count() == 1:  # First call (expected from get_current_user in auth)
-                # Return a dict that can be validated by schemas.User
-                return created_user_data_for_mock
+                # Return a Pydantic User model instance
+                return api_schemas.User(**created_user_data_for_mock)
             elif counter.current_count() == 2:  # Second call (expected from process_accomplishment)
                 return None  # Simulate user not found for the endpoint's specific check
 
