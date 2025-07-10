@@ -31,10 +31,10 @@ def test_create_quest(mock_tx):
     result = create_quest(mock_tx, quest_data)
 
     mock_tx.run.assert_called_once()
-    args, _ = mock_tx.run.call_args
+    args, kwargs = mock_tx.run.call_args # Get kwargs
     assert "CREATE (q:Quest)" in args[0]
     assert "SET q = $quest_data, q.id = randomUUID()" in args[0]
-    assert args[1]["quest_data"] == quest_data
+    assert kwargs["quest_data"] == quest_data # Check kwargs
     assert result["id"] == expected_quest_id
     assert result["name"] == quest_data["name"]
 
@@ -52,16 +52,16 @@ def test_create_accomplishment_without_quest(mock_tx):
     call_args_list = mock_tx.run.call_args_list
 
     # Check accomplishment creation call
-    create_call_args, _ = call_args_list[0]
+    create_call_args, create_call_kwargs = call_args_list[0] # Get kwargs
     assert "MATCH (u:User {email: $user_email})" in create_call_args[0]
     assert "CREATE (a:Accomplishment)" in create_call_args[0]
-    assert create_call_args[1]["user_email"] == user_email
-    assert create_call_args[1]["accomplishment_data"] == accomplishment_data
+    assert create_call_kwargs["user_email"] == user_email # Check kwargs
+    assert create_call_kwargs["accomplishment_data"] == accomplishment_data # Check kwargs
 
     assert result["id"] == expected_accomplishment_id
     assert result["name"] == accomplishment_data["name"]
 
-def test_create_accomplishment_with_quest(mock_tx):
+def test_create_accomplishment_with_quest(mock_tx, mocker): # Added mocker
     user_email = "test@example.com"
     accomplishment_data = {"name": "Test Accomplishment for Quest", "description": "Done something for a quest."}
     quest_id = str(uuid.uuid4())
@@ -80,19 +80,19 @@ def test_create_accomplishment_with_quest(mock_tx):
     call_args_list = mock_tx.run.call_args_list
 
     # Check accomplishment creation call
-    create_call_args, _ = call_args_list[0]
+    create_call_args, create_call_kwargs = call_args_list[0] # Get kwargs
     assert "MATCH (u:User {email: $user_email})" in create_call_args[0]
     assert "CREATE (a:Accomplishment)" in create_call_args[0]
-    assert create_call_args[1]["user_email"] == user_email
-    assert create_call_args[1]["accomplishment_data"] == accomplishment_data
+    assert create_call_kwargs["user_email"] == user_email # Check kwargs
+    assert create_call_kwargs["accomplishment_data"] == accomplishment_data # Check kwargs
 
     # Check link to quest call
-    link_call_args, _ = call_args_list[1]
+    link_call_args, link_call_kwargs = call_args_list[1] # Get kwargs
     assert "MATCH (a:Accomplishment {id: $accomplishment_id})" in link_call_args[0]
     assert "MATCH (q:Quest {id: $quest_id})" in link_call_args[0]
     assert "MERGE (a)-[:FULFILLS]->(q)" in link_call_args[0]
-    assert link_call_args[1]["accomplishment_id"] == expected_accomplishment_id
-    assert link_call_args[1]["quest_id"] == quest_id
+    assert link_call_kwargs["accomplishment_id"] == expected_accomplishment_id # Check kwargs
+    assert link_call_kwargs["quest_id"] == quest_id # Check kwargs
 
     assert result["id"] == expected_accomplishment_id
     assert result["name"] == accomplishment_data["name"]

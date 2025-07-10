@@ -71,6 +71,7 @@ def test_issue_vc_for_accomplishment(monkeypatch, test_keys, clean_db_client):
     auth_headers = {"Authorization": f"Bearer {access_token}"}
 
     accomplishment_payload = {
+        "user_email": user_email, # Added user_email
         "name": "Built a Test Case",
         "description": "Successfully wrote a pytest case for VC generation.",
         # proof_url is optional
@@ -170,6 +171,7 @@ def test_process_accomplishment_with_quest_id(monkeypatch, clean_db_client, test
 
     # 3. Process Accomplishment with quest_id
     accomplishment_payload = {
+        "user_email": user_email, # Added user_email
         "name": "Completed Task for Quest",
         "description": "This accomplishment fulfills the test quest.",
         "quest_id": quest_id

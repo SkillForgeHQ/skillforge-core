@@ -10,16 +10,16 @@ client = TestClient(app)
 def mock_graph_db_session_for_quests(mocker):
     mock_session = mocker.MagicMock()
 
-    def mock_write_transaction(func, quest_data_dict):
-        # Simulate quest creation in DB
-        created_quest_data = {
+    # Keep the logic for a successful transaction if needed by default
+    def successful_write_transaction(func, quest_data_dict):
+        return {
             "id": uuid.uuid4(),
             "name": quest_data_dict["name"],
             "description": quest_data_dict["description"]
         }
-        return created_quest_data
 
-    mock_session.write_transaction = mock_write_transaction
+    # Assign a MagicMock to write_transaction and set its side_effect
+    mock_session.write_transaction = mocker.MagicMock(side_effect=successful_write_transaction)
 
     # Mock the get_graph_db_session dependency
     # This requires knowing how get_graph_db_session is structured.
@@ -58,7 +58,10 @@ def test_create_quest_endpoint(mock_graph_db_session_for_quests, mocker):
 
 def test_create_quest_endpoint_creation_fails(mock_graph_db_session_for_quests, mocker):
     # Simulate the DB operation returning None (e.g., creation failed)
-    mock_graph_db_session_for_quests.write_transaction.return_value = None
+    # Now mock_graph_db_session_for_quests refers to the session mock itself.
+    # Its write_transaction attribute is already a MagicMock.
+    mock_graph_db_session_for_quests.write_transaction.side_effect = None # Clear any default side_effect
+    mock_graph_db_session_for_quests.write_transaction.return_value = None # Set specific return for this test
 
     quest_create_data = {"name": "Fail Quest", "description": "This should fail."}
 
@@ -67,7 +70,12 @@ def test_create_quest_endpoint_creation_fails(mock_graph_db_session_for_quests, 
     assert response.status_code == 400
     assert response.json() == {"detail": "Quest could not be created"}
 
-    mock_graph_db_session_for_quests.write_transaction.assert_called_once_with(
-        mocker.ANY, # The first argument is the create_quest function from graph_crud
-        quest_create_data
-    )
+    # write_transaction is called with (function_to_execute, data_for_function)
+    # The first argument to write_transaction is the actual graph_crud.create_quest function
+    # The second argument is the quest_data dictionary
+    mock_graph_db_session_for_quests.write_transaction.assert_called_once()
+    args, _kwargs = mock_graph_db_session_for_quests.write_transaction.call_args
+    assert args[1] == quest_create_data # args[0] is the function, args[1] is the data
+    # It is also possible to check the function itself if needed:
+    # from api.graph_crud import create_quest as db_create_quest
+    # assert args[0] == db_create_quest
