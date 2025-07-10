@@ -1,3 +1,4 @@
+import uuid
 from neo4j import GraphDatabase
 from typing import List
 
@@ -132,45 +133,45 @@ def create_user_node(tx, email):
 
 
 # ---- Quest CRUD Operations ----
-def create_quest(tx, quest_data: dict):
-    """
-    Creates a Quest node.
-    """
+def create_quest(tx, quest_data):
+    """Creates a new Quest node and returns it."""
+    new_id = str(uuid.uuid4())
     query = """
-    CREATE (q:Quest)
-    SET q = $quest_data, q.id = randomUUID()
+    CREATE (q:Quest {id: $id, name: $name, description: $description})
     RETURN q
     """
-    result = tx.run(query, quest_data=quest_data)
-    return result.single()["q"]
+    result = tx.run(query, id=new_id, **quest_data).single()
+    return result['q']
 
 # ---- Accomplishment CRUD Operations ----
-def create_accomplishment(tx, user_email: str, accomplishment_data: dict, quest_id: str = None):
+def create_accomplishment(tx, user_email, accomplishment_data):
     """
-    Creates an Accomplishment node and links it to a user.
-    Optionally links to a quest if quest_id is provided.
+    Creates an Accomplishment, links it to the user, and optionally
+    links it to the Quest it fulfills.
     """
-    # Create the Accomplishment node and link it to the user
-    query_create_accomplishment = """
+    accomplishment_id = str(uuid.uuid4())
+    query = """
     MATCH (u:User {email: $user_email})
-    CREATE (a:Accomplishment)
-    SET a = $accomplishment_data, a.id = randomUUID(), a.timestamp = datetime()
+    CREATE (a:Accomplishment {
+        id: $id,
+        name: $name,
+        description: $description,
+        proof_url: $proof_url,
+        timestamp: datetime()
+    })
     CREATE (u)-[:COMPLETED]->(a)
     RETURN a
     """
-    result = tx.run(
-        query_create_accomplishment, user_email=user_email, accomplishment_data=accomplishment_data
-    )
-    accomplishment_node = result.single()["a"]
+    result = tx.run(query, user_email=user_email, id=accomplishment_id, **accomplishment_data.dict(exclude={'user_email', 'quest_id'})).single()
+    accomplishment_node = result['a']
 
-    # If a quest_id is provided, link the accomplishment to the quest
-    if quest_id:
-        query_link_to_quest = """
+    if accomplishment_data.quest_id:
+        link_query = """
         MATCH (a:Accomplishment {id: $accomplishment_id})
         MATCH (q:Quest {id: $quest_id})
-        MERGE (a)-[:FULFILLS]->(q)
+        CREATE (a)-[:FULFILLS]->(q)
         """
-        tx.run(query_link_to_quest, accomplishment_id=accomplishment_node["id"], quest_id=quest_id)
+        tx.run(link_query, accomplishment_id=accomplishment_id, quest_id=str(accomplishment_data.quest_id))
 
     return accomplishment_node
 
