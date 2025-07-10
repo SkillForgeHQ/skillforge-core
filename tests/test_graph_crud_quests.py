@@ -42,17 +42,23 @@ def test_create_quest(mock_tx):
     assert result["name"] == quest_data["name"]
 
 # Import the new function we want to test
-from api.graph_crud import create_quest_and_link_to_user
+from api.graph_crud import create_quest_and_link_to_user # Implicitly imports uuid used by graph_crud
+import uuid # Import uuid here to mock it
 
 def test_create_quest_and_link_to_user(mock_tx, mocker): # Added mocker
     quest_data = {"name": "Linked Test Quest", "description": "A quest for testing user linking."}
     user_email = "user@example.com"
-    # We'll generate a UUID in the test to simulate the one generated in the function,
-    # and ensure the mock returns it, so we can verify the linking query.
-    expected_quest_id_str = str(uuid.uuid4())
+
+    # This is the ID we expect uuid.uuid4() to return when called inside the function.
+    expected_quest_id_str = "fixed-uuid-for-testing"
+
+    # Mock uuid.uuid4() to return our fixed ID.
+    # The target for mocking is 'api.graph_crud.uuid.uuid4' because that's where it's called.
+    mocker.patch('api.graph_crud.uuid.uuid4', return_value=uuid.UUID(expected_quest_id_str))
 
     # Mock the first tx.run call (Quest creation)
     # It should return a dictionary that simulates a Neo4j Node.
+    # The 'id' in this mock_quest_node should be the string representation of the UUID.
     mock_quest_node = {"id": expected_quest_id_str, **quest_data}
 
     # The side_effect will allow us to mock different return values for consecutive calls
