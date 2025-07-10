@@ -62,9 +62,17 @@ async def process_accomplishment(
                 accomplishment_payload,  # Send the dict without quest_id
                 quest_id=quest_id # Pass quest_id separately
             )
-            # Convert Neo4j Node to Pydantic model. Ensure your Pydantic model can handle this.
+            # Convert Neo4j Node to Pydantic model.
+            # The accomplishment_node from graph_crud doesn't have user_email directly.
+            # We need to construct a dictionary for validation, including the user_email from the current session.
+            accomplishment_data_for_validation = dict(accomplishment_node) # Convert node to dict
+            accomplishment_data_for_validation['user_email'] = current_user.email
+            # quest_id might also be needed if it's part of AccomplishmentSchema and not on the node
+            if quest_id: # If a quest_id was processed
+                accomplishment_data_for_validation['quest_id'] = quest_id
+
             created_accomplishment = AccomplishmentSchema.model_validate(
-                accomplishment_node
+                accomplishment_data_for_validation
             )
 
         # Step 2: Extract skills from the accomplishment description
