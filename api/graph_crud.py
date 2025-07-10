@@ -131,12 +131,27 @@ def create_user_node(tx, email):
     return result.single()["u.email"]
 
 
-# ---- Accomplishment CRUD Operations ----
-def create_accomplishment(tx, user_email: str, accomplishment_data: dict):
+# ---- Quest CRUD Operations ----
+def create_quest(tx, quest_data: dict):
     """
-    Creates an Accomplishment node and links it to a user.
+    Creates a Quest node.
     """
     query = """
+    CREATE (q:Quest)
+    SET q = $quest_data, q.id = randomUUID()
+    RETURN q
+    """
+    result = tx.run(query, quest_data=quest_data)
+    return result.single()["q"]
+
+# ---- Accomplishment CRUD Operations ----
+def create_accomplishment(tx, user_email: str, accomplishment_data: dict, quest_id: str = None):
+    """
+    Creates an Accomplishment node and links it to a user.
+    Optionally links to a quest if quest_id is provided.
+    """
+    # Create the Accomplishment node and link it to the user
+    query_create_accomplishment = """
     MATCH (u:User {email: $user_email})
     CREATE (a:Accomplishment)
     SET a = $accomplishment_data, a.id = randomUUID(), a.timestamp = datetime()
@@ -144,9 +159,20 @@ def create_accomplishment(tx, user_email: str, accomplishment_data: dict):
     RETURN a
     """
     result = tx.run(
-        query, user_email=user_email, accomplishment_data=accomplishment_data
+        query_create_accomplishment, user_email=user_email, accomplishment_data=accomplishment_data
     )
-    return result.single()["a"]
+    accomplishment_node = result.single()["a"]
+
+    # If a quest_id is provided, link the accomplishment to the quest
+    if quest_id:
+        query_link_to_quest = """
+        MATCH (a:Accomplishment {id: $accomplishment_id})
+        MATCH (q:Quest {id: $quest_id})
+        MERGE (a)-[:FULFILLS]->(q)
+        """
+        tx.run(query_link_to_quest, accomplishment_id=accomplishment_node["id"], quest_id=quest_id)
+
+    return accomplishment_node
 
 
 def link_accomplishment_to_skill(tx, accomplishment_id: str, skill_name: str):
