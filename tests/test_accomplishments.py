@@ -303,11 +303,9 @@ def test_process_accomplishment_for_non_existent_user(clean_db_client): # Remove
 
     # Define the mock function that will replace the real dependency
     def mock_get_current_user_for_ghost():
-        # Ensure the mock User object matches the fields expected by the application
-        # (e.g., email, name, potentially others like 'id' or 'disabled' if used by User model).
-        # The example from the prompt uses User(email=..., name=...).
-        # Adding dummy id and is_active=True to satisfy Pydantic model validation.
-        return User(id=str(uuid.uuid4()), email=non_existent_user_email, name="Ghost User", is_active=True)
+        # Ensure the mock User object matches the fields expected by the application.
+        # User ID is an int, is_active is a bool.
+        return User(id=9999, email=non_existent_user_email, name="Ghost User", is_active=True)
 
     # Apply the override to the app instance used by the TestClient from the fixture
     client.app.dependency_overrides[get_current_user] = mock_get_current_user_for_ghost
