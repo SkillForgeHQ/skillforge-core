@@ -291,26 +291,25 @@ from api.main import app
 # Assuming api.routers.auth is the location of get_current_user based on typical project structure
 # If this path is incorrect, the test will fail, and we can adjust it.
 from api.routers.auth import get_current_user
-from api.schemas import User
+from api.schemas import User # User schema for the mock
 
 def test_process_accomplishment_for_non_existent_user(clean_db_client): # Removed monkeypatch
     """
     Tests that a 404 is returned when processing an accomplishment
     for a user that does not exist in the database.
     """
-    client = clean_db_client # client from fixture
+    client = clean_db_client # client from fixture (provides TestClient with its own app instance)
     non_existent_user_email = "ghost@example.com"
 
     # Define the mock function that will replace the real dependency
     def mock_get_current_user_for_ghost():
-        # The User model from api.schemas might not have 'disabled' field.
-        # Adjusting to User(email=non_existent_user_email, name="Ghost User")
-        # If 'disabled' is mandatory, the User schema or this mock needs adjustment.
-        # For now, assuming 'name' and 'email' are sufficient as per example.
+        # Ensure the mock User object matches the fields expected by the application
+        # (e.g., email, name, potentially others like 'id' or 'disabled' if used by User model).
+        # The example from the prompt uses User(email=..., name=...).
         return User(email=non_existent_user_email, name="Ghost User")
 
-    # Use dependency_overrides to replace get_current_user with our mock
-    app.dependency_overrides[get_current_user] = mock_get_current_user_for_ghost
+    # Apply the override to the app instance used by the TestClient from the fixture
+    client.app.dependency_overrides[get_current_user] = mock_get_current_user_for_ghost
 
     # Mock AI services as they might be called if auth passes
     # This part can remain if these services are indeed called before the user_exists check.
