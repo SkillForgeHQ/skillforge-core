@@ -6,10 +6,12 @@ from neo4j import Driver
 from ..ai.schemas import SkillLevel
 from ..ai.skill_extractor import skill_extractor_chain
 from ..ai.skill_matcher import find_skill_match
+from sqlalchemy.engine import Connection # Added for type hinting
 
 # Database Imports
-from ..database import get_graph_db_driver
+from ..database import get_graph_db_driver, get_db # Added get_db
 from .. import graph_crud
+from .. import crud # Added crud import
 from ..schemas import AccomplishmentCreate, Accomplishment as AccomplishmentSchema, User
 
 # Security Imports
@@ -41,6 +43,7 @@ async def process_accomplishment(
     accomplishment_data: AccomplishmentCreate = Body(...),
     driver: Driver = Depends(get_graph_db_driver),
     current_user: User = Depends(get_current_user),
+    db: Connection = Depends(get_db),
 ):
     """
     Analyzes a user's accomplishment, extracts skills, and updates the knowledge graph.
@@ -51,6 +54,11 @@ async def process_accomplishment(
     - Links the newly created accomplishment to each relevant skill.
     """
     try:
+        # Check if user exists
+        user = crud.get_user_by_email(db, current_user.email)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
         # Step 1: Create the Accomplishment node and link it to the user
         with driver.session() as session:
             accomplishment_payload = accomplishment_data.model_dump(exclude_unset=True)
