@@ -286,3 +286,16 @@ def store_vc_receipt(tx, accomplishment_id, vc_receipt):
         vc_id=vc_receipt["id"],
         vc_issuanceDate=vc_receipt["issuanceDate"]
     )
+
+
+def user_exists(tx, email: str) -> bool:
+    """
+    Checks if a user with the given email exists in the database.
+    Returns True if the user exists, False otherwise.
+    """
+    query = """
+    MATCH (u:User {email: $email})
+    RETURN count(u) > 0 AS user_exists
+    """
+    result = tx.run(query, email=email).single()
+    return result["user_exists"] if result else False

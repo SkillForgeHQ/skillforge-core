@@ -51,6 +51,11 @@ async def process_accomplishment(
     - Links the newly created accomplishment to each relevant skill.
     """
     try:
+        # Step 0: Validate user exists
+        with driver.session() as session:
+            if not session.read_transaction(graph_crud.user_exists, current_user.email):
+                raise HTTPException(status_code=404, detail=f"User with email {current_user.email} not found.")
+
         # Step 1: Create the Accomplishment node and link it to the user
         with driver.session() as session:
             accomplishment_payload = accomplishment_data.model_dump(exclude_unset=True)
