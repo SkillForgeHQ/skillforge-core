@@ -95,6 +95,17 @@ def get_graph_db_driver() -> Driver:
         graph_db_manager.connect()
     return graph_db_manager.driver
 
+# Define GraphDBSession type for clarity, can be aliased to neo4j.Session
+from neo4j import Session as Neo4jSession
+
+GraphDBSession = Neo4jSession
+
+# FastAPI dependency to get a Neo4j session
+def get_graph_db_session() -> GraphDBSession:
+    driver = get_graph_db_driver()
+    with driver.session() as session:
+        yield session
+
 
 # This object will be used by our RAG chain.
 if os.getenv("TESTING_MODE") == "True":
