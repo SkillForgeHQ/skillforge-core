@@ -59,7 +59,8 @@ def test_issue_vc_for_accomplishment(monkeypatch, test_keys, clean_db_client):
     unique_id = uuid.uuid4().hex[:8]  # Use a portion of a UUID for uniqueness
     user_email = f"test.vc.user.{unique_id}@skillforge.io"
     user_password = "asecurepassword" # Store password for login
-    user_payload = {"email": user_email, "name": "VC Test User", "password": user_password}
+    # The UserCreate schema does not have a 'name' field.
+    user_payload = {"email": user_email, "password": user_password}
     user_response = client.post("/users/", json=user_payload)
     assert user_response.status_code == 201, f"User creation failed or returned unexpected status: {user_response.text}"
     # created_user_data = user_response.json() # User data if needed, like ID
@@ -72,7 +73,7 @@ def test_issue_vc_for_accomplishment(monkeypatch, test_keys, clean_db_client):
     auth_headers = {"Authorization": f"Bearer {access_token}"}
 
     accomplishment_payload = {
-        "user_email": user_email, # Added user_email
+        "user_email": user_email,
         "name": "Built a Test Case",
         "description": "Successfully wrote a pytest case for VC generation.",
         # proof_url is optional
@@ -86,10 +87,7 @@ def test_issue_vc_for_accomplishment(monkeypatch, test_keys, clean_db_client):
     accomplishment_id = response.json()["accomplishment"]["id"]
 
     # STEP 2: Call the new endpoint to issue the credential
-    # This endpoint might also require auth depending on its definition, but test_keys implies it might not if using issuer key directly
-    # For now, let's assume it doesn't need user auth if it's an admin-like action or uses a different auth mechanism.
-    # If it requires user auth, add headers=auth_headers
-    vc_response = client.post(f"/accomplishments/{accomplishment_id}/issue-credential") # Assuming no auth needed for this specific test setup
+    vc_response = client.post(f"/accomplishments/{accomplishment_id}/issue-credential")
     assert vc_response.status_code == 200
 
     signed_vc_jwt = vc_response.json()["verifiable_credential_jwt"]
@@ -140,7 +138,8 @@ def test_process_accomplishment_with_quest_id(monkeypatch, clean_db_client, test
     unique_id = uuid.uuid4().hex[:8]
     user_email = f"test.quest.user.{unique_id}@skillforge.io"
     user_password = "securepassword"
-    user_payload = {"email": user_email, "name": "Quest Test User", "password": user_password}
+    # UserCreate schema does not have 'name'
+    user_payload = {"email": user_email, "password": user_password}
     user_response = client.post("/users/", json=user_payload)
     assert user_response.status_code == 201, user_response.text
 
@@ -151,7 +150,6 @@ def test_process_accomplishment_with_quest_id(monkeypatch, clean_db_client, test
     auth_headers = {"Authorization": f"Bearer {access_token}"}
 
     # 2. Create a Quest (using the new endpoint)
-    # We need to mock the graph_db_session for the quests router as well
     mock_quest_db_session = MagicMock()
 
     def mock_quest_write_transaction(func, quest_data_dict):
@@ -160,37 +158,32 @@ def test_process_accomplishment_with_quest_id(monkeypatch, clean_db_client, test
 
     mock_quest_db_session.write_transaction = mock_quest_write_transaction
 
-    # Patch where get_graph_db_session is imported in api.routers.quests
     with patch("api.routers.quests.get_graph_db_session") as mock_get_quest_db:
         mock_get_quest_db.return_value.__enter__.return_value = mock_quest_db_session
 
         quest_create_payload = {"name": "My Test Quest", "description": "Quest for testing accomplishments."}
-        quest_response = client.post("/quests/", json=quest_create_payload) # No auth for quest creation in this example
+        quest_response = client.post("/quests/", json=quest_create_payload)
         assert quest_response.status_code == 200, quest_response.text
         created_quest = quest_response.json()
         quest_id = created_quest["id"]
 
     # 3. Process Accomplishment with quest_id
     accomplishment_payload = {
-        "user_email": user_email, # Added user_email
+        "user_email": user_email,
         "name": "Completed Task for Quest",
         "description": "This accomplishment fulfills the test quest.",
         "quest_id": quest_id
     }
 
-    # Mock the graph_crud.create_accomplishment to verify it's called with quest_id
-    # This mock will apply to the call within the /accomplishments/process endpoint
     with patch("api.graph_crud.create_accomplishment") as mock_create_accomplishment_crud:
-        # Define what the mocked CRUD function should return
-        # It needs to return a dictionary that can be validated by AccomplishmentSchema
         mock_accomplishment_node = {
             "id": uuid.uuid4(),
             "name": accomplishment_payload["name"],
             "description": accomplishment_payload["description"],
             "proof_url": None,
-            "timestamp": "2023-01-01T12:00:00Z", # Example timestamp
-            "user_email": user_email, # Added user_email for schema validation
-            "quest_id": quest_id # Added quest_id for schema validation
+            "timestamp": "2023-01-01T12:00:00Z",
+            "user_email": user_email,
+            "quest_id": quest_id
         }
         mock_create_accomplishment_crud.return_value = mock_accomplishment_node
 
@@ -199,105 +192,32 @@ def test_process_accomplishment_with_quest_id(monkeypatch, clean_db_client, test
 
         response_data = acc_response.json()
         assert response_data["accomplishment"]["name"] == accomplishment_payload["name"]
-        # The quest_id is part of the AccomplishmentCreate schema but not directly in Accomplishment schema by default.
-        # The key is to verify that graph_crud.create_accomplishment was called correctly.
 
-        # Verify that the mock_create_accomplishment_crud was called with the quest_id
         mock_create_accomplishment_crud.assert_called_once()
         args, kwargs = mock_create_accomplishment_crud.call_args
-        # args are (tx, user_email, accomplishment_data_dict)
-        # kwargs are {quest_id: ...}
-        # The quest_id from the payload (string) is converted to UUID by Pydantic model AccomplishmentCreate
-        # So, when it's passed to the CRUD function, it's a UUID object.
-        # We compare it with the original string quest_id from the test.
         assert str(kwargs.get("quest_id")) == quest_id
-        # Ensure user_email is also passed
         assert args[1] == user_email
-        # Ensure the main payload (without quest_id) is passed as accomplishment_data
-        expected_acc_payload = accomplishment_payload.copy()
-        expected_acc_payload.pop("quest_id") # quest_id is passed as a separate kwarg
-        # The router also adds user_email to the payload sent to CRUD.
-        # However, our schema for AccomplishmentCreate now includes user_email.
-        # The router extracts quest_id, and the rest of accomplishment_data (which includes user_email) is passed.
-        # So, we need to ensure that the payload sent to CRUD matches what the router prepares.
-        # accomplishment_data.model_dump(exclude_unset=True) is used in the router.
-        # Let's adjust the assertion for accomplishment_data_dict
-        # In the router:
-        # accomplishment_payload = accomplishment_data.model_dump(exclude_unset=True)
-        # quest_id = accomplishment_payload.pop("quest_id", None)
-        # So, args[2] (accomplishment_data_dict) should be accomplishment_payload *without* quest_id but *with* user_email (if it was in the input)
-        # The AccomplishmentCreate schema has user_email, so it should be in the model_dump.
-        # The current test sends `accomplishment_payload` which does not have user_email.
-        # Let's align the test payload with the schema.
 
-        # Re-check payload for `graph_crud.create_accomplishment`
-        # The router's `accomplishment_data: AccomplishmentCreate` will have `user_email` from the schema.
-        # The test payload `accomplishment_payload` should also include `user_email`.
-        # The `current_user.email` is used for the `user_email` argument to `graph_crud.create_accomplishment`.
-        # The `accomplishment_data.model_dump()` is used for the `accomplishment_data` argument.
-
-        # Correct assertion for args[2] (the dict passed as accomplishment_data to crud)
-        # The router does: `accomplishment_data.model_dump(exclude_unset=True)` then `pop("quest_id")`
-        # The input `accomplishment_payload` for the endpoint should match `AccomplishmentCreate`
-        # Our `AccomplishmentCreate` schema has `user_email`.
-        # The test payload for the endpoint should be:
-        # { "name": ..., "description": ..., "quest_id": ..., "user_email": ...}
-
-        # Let's re-evaluate the call to the endpoint and the mock assertion.
-        # The `accomplishment_payload` used for `client.post` should include `user_email`.
-        # The router will then get `current_user.email` for the first arg to crud,
-        # and `accomplishment_data.model_dump().pop('quest_id')` for the second arg.
-
-        # The current `accomplishment_payload` for the endpoint is missing `user_email`.
-        # Let's assume the schema `AccomplishmentCreate` has `user_email` and it's populated correctly.
-        # The router code is:
-        # `accomplishment_payload_dict = accomplishment_data.model_dump(exclude_unset=True)`
-        # `quest_id_from_payload = accomplishment_payload_dict.pop("quest_id", None)`
-        # `session.write_transaction(graph_crud.create_accomplishment, current_user.email, accomplishment_payload_dict, quest_id=quest_id_from_payload)`
-        # So, `args[2]` should be `accomplishment_payload_dict` (which is `accomplishment_data.model_dump()` minus `quest_id`).
-
-        # Our test `accomplishment_payload` sent to the endpoint has `name`, `description`, `quest_id`.
-        # The `AccomplishmentCreate` schema also has `user_email`.
-        # So, when `accomplishment_data.model_dump(exclude_unset=True)` is called in the router,
-        # it will produce a dict with `name`, `description`, `quest_id`, and `user_email`.
-        # Then `quest_id` is popped.
-        # So `args[2]` should contain `name`, `description`, `user_email`.
-
-        expected_crud_payload = {
+        # Corrected assertion for args[2]
+        # It should contain user_email because AccomplishmentCreate includes it
+        expected_crud_payload_dict = {
+            "user_email": user_email,
             "name": accomplishment_payload["name"],
             "description": accomplishment_payload["description"],
-            "user_email": user_email # This comes from the AccomplishmentCreate model
+            # proof_url is optional and not in payload, so it won't be in model_dump(exclude_unset=True)
         }
-        # The actual payload sent to the endpoint did not include user_email, but the schema implies it.
-        # FastAPI would inject it if it's part of the Pydantic model.
-        # Let's assume the model binding works and `user_email` is in `accomplishment_data` in the router.
-
-        assert args[2]["name"] == accomplishment_payload["name"]
-        assert args[2]["description"] == accomplishment_payload["description"]
-        assert args[2]["user_email"] == user_email # This field is in AccomplishmentCreate schema
-
-        # Verify the response structure if needed
-        assert response_data["accomplishment"]["name"] == accomplishment_payload["name"]
-        # If your AccomplishmentSchema includes quest_id, you can assert it here
-        # assert response_data["accomplishment"]["quest_id"] == quest_id
-        # However, the provided Accomplishment schema does not have quest_id, so we check the CRUD call.
-
-    # Further check: if you have a way to fetch the accomplishment and see if it's linked to the quest.
-    # This would require another DB call, e.g., get_accomplishment_details and check for a FULFILLS relationship.
-    # For now, verifying the CRUD call is sufficient for this unit test's scope.
+        assert args[2] == expected_crud_payload_dict
 
 
 def test_process_accomplishment_non_existent_user(clean_db_client, monkeypatch):
     client = clean_db_client
 
-    # Mock AI services as they are called before the user check
     from unittest.mock import AsyncMock, MagicMock
     from api.ai.schemas import ExtractedSkills, SkillLevel, SkillMatch
     from api import crud # Import crud to get its original function
-    #from api import schemas as api_schemas # Already imported at the top
 
     mock_chain_instance = MagicMock()
-    mock_extracted_skills_response = ExtractedSkills(skills=[]) # No skills needed for this test
+    mock_extracted_skills_response = ExtractedSkills(skills=[])
     mock_chain_instance.ainvoke = AsyncMock(return_value=mock_extracted_skills_response)
     monkeypatch.setattr("api.routers.accomplishments.skill_extractor_chain", mock_chain_instance)
 
@@ -309,30 +229,30 @@ def test_process_accomplishment_non_existent_user(clean_db_client, monkeypatch):
     user_email_for_test = f"user.stateful.mock.{unique_id}@skillforge.io"
     user_password = "password123"
 
-    # Create the user in the SQL DB so auth can find them initially
-    user_payload = {"email": user_email_for_test, "name": "Stateful Mock Test User", "password": user_password}
-    user_response = client.post("/users/", json=user_payload)
-    assert user_response.status_code == 201, f"User creation failed: {user_response.text}"
+    # UserCreate schema does not require 'name' but our test payload for /users/ includes it.
+    # The /users/ endpoint should ideally ignore extra fields or UserCreate should include 'name' if it's stored.
+    # For now, we assume /users/ POST correctly creates the user and returns data for login.
+    user_payload_for_creation = {"email": user_email_for_test, "name": "Stateful Mock Test User", "password": user_password}
+    user_creation_response = client.post("/users/", json=user_payload_for_creation)
+    assert user_creation_response.status_code == 201, f"User creation failed: {user_creation_response.text}"
 
-    created_user_response_data = user_response.json()
-    # Ensure all fields required by schemas.User are present for Pydantic validation
+    created_user_response_json = user_creation_response.json()
+    # Data for creating api_schemas.User instance. It must match fields in api_schemas.User
+    # api_schemas.User has: id, email, is_active.
+    # The /users/ POST response (schemas.User) returns id, email, is_active.
     created_user_data_for_mock = {
-        "id": created_user_response_data["id"],
-        "email": created_user_response_data["email"],
-        "name": created_user_response_data["name"], # Added name
-        "hashed_password": "mock_hashed_password", # Mocked, as it's not returned by /users/
-        "is_active": created_user_response_data.get("is_active", True) # Default if not present
+        "id": created_user_response_json["id"],
+        "email": created_user_response_json["email"],
+        # "name" is not part of schemas.User, so not needed here for the Pydantic model
+        "is_active": created_user_response_json.get("is_active", True)
     }
 
-
-    # Log in to get a token
     login_data = {"username": user_email_for_test, "password": user_password}
     token_response = client.post("/token", data=login_data)
     assert token_response.status_code == 200, f"Token retrieval failed: {token_response.text}"
     access_token = token_response.json()["access_token"]
     auth_headers = {"Authorization": f"Bearer {access_token}"}
 
-    # Store the original crud.get_user_by_email from api.crud
     original_api_crud_get_user_by_email = crud.get_user_by_email
 
     class CallCounter:
@@ -347,18 +267,15 @@ def test_process_accomplishment_non_existent_user(clean_db_client, monkeypatch):
 
     def mock_get_user_by_email_stateful(db_conn, *, email):
         counter.increment()
-
         if email == user_email_for_test:
-            if counter.current_count() == 1:  # First call (expected from get_current_user in auth)
-                # Return a Pydantic User model instance
+            if counter.current_count() == 1:
+                # Return a Pydantic User model instance for the auth layer
+                # This dict must match the fields of api_schemas.User for successful validation
                 return api_schemas.User(**created_user_data_for_mock)
-            elif counter.current_count() == 2:  # Second call (expected from process_accomplishment)
-                return None  # Simulate user not found for the endpoint's specific check
-
-        # Fallback for any other emails or unexpected calls
+            elif counter.current_count() == 2:
+                return None
         return original_api_crud_get_user_by_email(db_conn, email=email)
 
-    # Patch crud.get_user_by_email at its source (api.crud)
     monkeypatch.setattr("api.crud.get_user_by_email", mock_get_user_by_email_stateful)
 
     accomplishment_payload_for_endpoint = {
@@ -374,5 +291,4 @@ def test_process_accomplishment_non_existent_user(clean_db_client, monkeypatch):
     assert response.status_code == 404, f"Expected 404, got {response.status_code}. Response: {response.text}"
     assert response.json()["detail"] == "User not found"
 
-    # Restore original function
     monkeypatch.setattr("api.crud.get_user_by_email", original_api_crud_get_user_by_email)
