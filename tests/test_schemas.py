@@ -34,6 +34,7 @@ def test_accomplishment_timestamp_conversion():
 
     accomplishment_data_from_neo4j_node = {
         "id": uuid4(),
+        "user_email": "test@example.com", # Added user_email
         "name": "Test Accomplishment",
         "description": "Tested Pydantic conversion.",
         "proof_url": None,
@@ -61,6 +62,7 @@ def test_accomplishment_timestamp_conversion():
     python_dt = datetime.now()
     accomplishment_data_with_python_dt = {
         "id": uuid4(),
+        "user_email": "test2@example.com", # Added user_email
         "name": "Test Accomplishment 2",
         "description": "Tested with Python datetime.",
         "timestamp": python_dt,
@@ -76,6 +78,7 @@ def test_accomplishment_timestamp_conversion():
     iso_dt_string = "2023-11-01T10:00:00Z"
     accomplishment_data_with_iso_string = {
         "id": uuid4(),
+        "user_email": "test3@example.com", # Added user_email
         "name": "Test Accomplishment 3",
         "description": "Tested with ISO string.",
         "timestamp": iso_dt_string,

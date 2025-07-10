@@ -64,10 +64,24 @@ class UserPasswordChange(BaseModel):
 
 
 # ---- Accomplishment Schemas ----
+class QuestBase(BaseModel):
+    name: str
+    description: str
+
+class QuestCreate(QuestBase):
+    pass
+
+class Quest(QuestBase):
+    id: uuid.UUID
+    model_config = {"from_attributes": True}
+
+
 class AccomplishmentCreate(BaseModel):
+    user_email: str # Added user_email as it's needed for creating an accomplishment
     name: str
     description: str
     proof_url: Optional[str] = None
+    quest_id: Optional[uuid.UUID] = None
 
 
 class Accomplishment(AccomplishmentCreate):

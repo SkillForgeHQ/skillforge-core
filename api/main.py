@@ -3,7 +3,7 @@
 import os
 from fastapi import FastAPI
 from sqlalchemy import create_engine
-from .routers import skills, users, auth, goals, qa, accomplishments
+from .routers import skills, users, auth, goals, qa, accomplishments, quests # Added quests
 import api.database # To access and re-assign api.database.engine
 
 def create_app():
@@ -35,6 +35,7 @@ def create_app():
     app.include_router(goals.router)
     app.include_router(qa.router)
     app.include_router(accomplishments.router)
+    app.include_router(quests.router) # Added quests router
 
     @app.get("/", tags=["Root"])
     async def read_root():

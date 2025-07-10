@@ -53,10 +53,14 @@ async def process_accomplishment(
     try:
         # Step 1: Create the Accomplishment node and link it to the user
         with driver.session() as session:
+            accomplishment_payload = accomplishment_data.model_dump(exclude_unset=True)
+            quest_id = accomplishment_payload.pop("quest_id", None) # Extract quest_id
+
             accomplishment_node = session.write_transaction(
                 graph_crud.create_accomplishment,
                 current_user.email,
-                accomplishment_data.model_dump(),  # Send the whole dict
+                accomplishment_payload,  # Send the dict without quest_id
+                quest_id=quest_id # Pass quest_id separately
             )
             # Convert Neo4j Node to Pydantic model. Ensure your Pydantic model can handle this.
             created_accomplishment = AccomplishmentSchema.model_validate(
