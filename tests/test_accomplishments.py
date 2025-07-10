@@ -334,14 +334,15 @@ def test_process_accomplishment_non_existent_user(clean_db_client, monkeypatch):
 
     original_get_user_by_email = accomplishments_router.crud.get_user_by_email
 
-    def mock_get_user_by_email_returns_none(db_conn, email_to_check):
+    # Corrected mock function signature to accept 'email' as a keyword argument
+    def mock_get_user_by_email_correct_signature(db_conn, *, email): # Corrected name and signature
         # This mock will simulate the user (whose token is used) not being found in SQL DB
-        if email_to_check == user_to_make_non_existent_in_sql:
+        if email == user_to_make_non_existent_in_sql: # Use the keyword argument 'email'
             return None
-        # Fallback for any other email if necessary, though not expected in this test path
-        return original_get_user_by_email(db_conn, email_to_check)
+        # Fallback for any other email if necessary, by calling the original function
+        return original_get_user_by_email(db_conn, email=email) # Call original with keyword arg
 
-    monkeypatch.setattr(accomplishments_router.crud, "get_user_by_email", mock_get_user_by_email_returns_none)
+    monkeypatch.setattr(accomplishments_router.crud, "get_user_by_email", mock_get_user_by_email_correct_signature) # Use corrected mock name
 
     accomplishment_payload_for_endpoint = {
         # user_email here is part of the AccomplishmentCreate schema, used by Pydantic
