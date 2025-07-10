@@ -4,6 +4,8 @@ from unittest.mock import patch, MagicMock
 import json
 from jwcrypto import jwk
 
+print(f"DATABASE_URL_IN_CONFTEST: {os.getenv('DATABASE_URL')}")
+
 # This global variable is used by the fixture to manage the patcher lifecycle.
 _neo4j_constructor_patcher = None
 
@@ -68,7 +70,7 @@ def clean_db_client():
     Provides a TestClient instance with a clean database state (PostgreSQL and Neo4j)
     by using an app factory and ensuring database tables are created and emptied.
     """
-    import os
+    # Removed erroneous import os and print statement from here
     from sqlalchemy import create_engine
     from fastapi.testclient import TestClient
 
