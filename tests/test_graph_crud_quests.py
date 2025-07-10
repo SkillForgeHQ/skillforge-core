@@ -32,9 +32,12 @@ def test_create_quest(mock_tx):
 
     mock_tx.run.assert_called_once()
     args, kwargs = mock_tx.run.call_args # Get kwargs
-    assert "CREATE (q:Quest)" in args[0]
-    assert "SET q = $quest_data, q.id = randomUUID()" in args[0]
-    assert kwargs["quest_data"] == quest_data # Check kwargs
+    # Updated assertion to match the new query structure
+    assert "CREATE (q:Quest {id: $id, name: $name, description: $description})" in args[0]
+    # Check that the quest_data is passed correctly for property setting
+    assert kwargs["name"] == quest_data["name"]
+    assert kwargs["description"] == quest_data["description"]
+    assert "id" in kwargs # Ensure id is being passed as a parameter
     assert result["id"] == expected_quest_id
     assert result["name"] == quest_data["name"]
 
