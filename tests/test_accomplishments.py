@@ -292,7 +292,7 @@ def test_process_accomplishment_non_existent_user(clean_db_client, monkeypatch):
     # Mock AI services as they are called before the user check
     from unittest.mock import AsyncMock, MagicMock
     from api.ai.schemas import ExtractedSkills, SkillLevel, SkillMatch
-    from api import crud # Import crud to get the original function for fallback
+    # No longer need to import api.crud here for original_crud_get_user_by_email
 
     mock_chain_instance = MagicMock()
     mock_extracted_skills_response = ExtractedSkills(skills=[]) # No skills needed for this test
@@ -310,44 +310,41 @@ def test_process_accomplishment_non_existent_user(clean_db_client, monkeypatch):
     # We will mock `crud.get_user_by_email` to return None for this user.
 
     unique_id = uuid.uuid4().hex[:8]
-    # This user will exist in Neo4j (created by accomplishment processing if not for the check)
-    # but we'll mock the SQL check to make it seem non-existent in the SQL DB.
-    user_to_make_non_existent_in_sql = f"user.for.sql.check.{unique_id}@skillforge.io"
+    # This user will be created in the SQL DB so that `get_current_user` succeeds.
+    user_to_mock_as_non_existent_in_accomplishment_check = f"user.for.accomplishment.check.{unique_id}@skillforge.io"
     user_password = "password123"
 
     # Create this user in the SQL DB first to be able to log in and get a token
-    # The `clean_db_client` fixture handles TestClient instantiation and DB setup.
-    # We'll use its /users/ endpoint to create the user.
-    user_payload = {"email": user_to_make_non_existent_in_sql, "name": "Test User SQL Check", "password": user_password}
+    user_payload = {"email": user_to_mock_as_non_existent_in_accomplishment_check, "name": "Test User Accomplishment Check", "password": user_password}
     user_response = client.post("/users/", json=user_payload)
     assert user_response.status_code == 201, f"User creation failed: {user_response.text}"
 
     # Log in to get a token for this user
-    login_data = {"username": user_to_make_non_existent_in_sql, "password": user_password}
+    login_data = {"username": user_to_mock_as_non_existent_in_accomplishment_check, "password": user_password}
     token_response = client.post("/token", data=login_data)
     assert token_response.status_code == 200, f"Token retrieval failed: {token_response.text}"
     access_token = token_response.json()["access_token"]
     auth_headers = {"Authorization": f"Bearer {access_token}"}
 
-    # Store the original crud.get_user_by_email
-    original_crud_get_user_by_email = crud.get_user_by_email
+    # Now, mock `crud.get_user_by_email` specifically where it's imported in api.routers.accomplishments
+    from api.routers import accomplishments as accomplishments_router
 
-    # Corrected mock function signature to accept 'email' as a keyword argument
-    def mock_get_user_by_email_correct_signature(db_conn, *, email):
-        if email == user_to_make_non_existent_in_sql:
-            return None # Simulate user not found for our specific test case
-        # For any other email, call the original function to ensure other parts of auth work
-        return original_crud_get_user_by_email(db_conn, email=email)
+    # Store the original get_user_by_email from the accomplishments_router.crud context
+    original_accomplishments_crud_get_user_by_email = accomplishments_router.crud.get_user_by_email
 
-    # Patch crud.get_user_by_email at its source (api.crud)
-    monkeypatch.setattr("api.crud.get_user_by_email", mock_get_user_by_email_correct_signature)
+    def mock_accomplishment_get_user_returns_none(db_conn, *, email):
+        if email == user_to_mock_as_non_existent_in_accomplishment_check:
+            return None # Simulate user not found ONLY for the check within process_accomplishment
+        # Fallback for any other email, though not expected for this specific mock's purpose
+        return original_accomplishments_crud_get_user_by_email(db_conn, email=email)
+
+    # Patch the crud.get_user_by_email that is referenced by the accomplishments router
+    monkeypatch.setattr(accomplishments_router.crud, "get_user_by_email", mock_accomplishment_get_user_returns_none)
 
     accomplishment_payload_for_endpoint = {
-        # user_email here is part of the AccomplishmentCreate schema, used by Pydantic
-        # The actual user check in the endpoint uses `current_user.email` from the token.
-        "user_email": user_to_make_non_existent_in_sql, # This should ideally match the token's user for this test's intent
+        "user_email": user_to_mock_as_non_existent_in_accomplishment_check,
         "name": "Test Accomplishment for Non-Existent SQL User",
-        "description": "This should fail because the SQL user check is mocked to return None.",
+        "description": "This should fail because the SQL user check within process_accomplishment is mocked.",
     }
 
     response = client.post(
@@ -357,5 +354,5 @@ def test_process_accomplishment_non_existent_user(clean_db_client, monkeypatch):
     assert response.status_code == 404
     assert response.json()["detail"] == "User not found"
 
-    # Restore original function
-    monkeypatch.setattr("api.crud.get_user_by_email", original_crud_get_user_by_email)
+    # Restore original function in the accomplishments_router.crud context
+    monkeypatch.setattr(accomplishments_router.crud, "get_user_by_email", original_accomplishments_crud_get_user_by_email)
