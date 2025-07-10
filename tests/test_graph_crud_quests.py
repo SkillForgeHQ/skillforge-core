@@ -50,10 +50,12 @@ def test_create_quest_and_link_to_user(mock_tx, mocker): # Added mocker
     user_email = "user@example.com"
 
     # This is the ID we expect uuid.uuid4() to return when called inside the function.
-    expected_quest_id_str = "fixed-uuid-for-testing"
+    # Needs to be a valid UUID format.
+    expected_quest_id_str = "123e4567-e89b-12d3-a456-426614174000"
 
     # Mock uuid.uuid4() to return our fixed ID.
     # The target for mocking is 'api.graph_crud.uuid.uuid4' because that's where it's called.
+    # The mocked uuid.uuid4() should return a UUID object.
     mocker.patch('api.graph_crud.uuid.uuid4', return_value=uuid.UUID(expected_quest_id_str))
 
     # Mock the first tx.run call (Quest creation)
