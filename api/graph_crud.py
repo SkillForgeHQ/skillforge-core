@@ -143,6 +143,30 @@ def create_quest(tx, quest_data):
     result = tx.run(query, id=new_id, **quest_data).single()
     return result['q']
 
+
+def create_quest_and_link_to_user(tx, quest_data, user_email):
+    """
+    Creates a new Quest node, links it to the specified User with a HAS_QUEST relationship,
+    and returns the Quest node.
+    """
+    new_quest_id = str(uuid.uuid4())
+    # Create the Quest node
+    create_quest_query = """
+    CREATE (q:Quest {id: $id, name: $name, description: $description})
+    RETURN q
+    """
+    quest_node = tx.run(create_quest_query, id=new_quest_id, name=quest_data['name'], description=quest_data['description']).single()['q']
+
+    # Link the Quest to the User
+    link_user_to_quest_query = """
+    MATCH (u:User {email: $user_email})
+    MATCH (q:Quest {id: $quest_id})
+    MERGE (u)-[:HAS_QUEST]->(q)
+    """
+    tx.run(link_user_to_quest_query, user_email=user_email, quest_id=new_quest_id)
+
+    return quest_node
+
 # ---- Accomplishment CRUD Operations ----
 def create_accomplishment(tx, user_email, accomplishment_data, quest_id: str = None):
     """

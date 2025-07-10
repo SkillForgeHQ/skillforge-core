@@ -12,8 +12,8 @@ from .. import graph_crud # Added graph_crud import
 from .. import schemas # Added schemas import for response_model
 
 # Security Imports
-# from .auth import get_current_user # Not used in this specific function currently
-# from ..schemas import User # Not used in this specific function currently
+from .auth import get_current_user # Not used in this specific function currently
+from ..schemas import User # Not used in this specific function currently
 
 router = APIRouter()
 
@@ -25,7 +25,8 @@ class GoalRequest(BaseModel):
 @router.post("/goals/parse", response_model=List[schemas.Quest], tags=["AI"]) # Changed response_model
 async def parse_goal_into_subtasks(
     request: GoalRequest,
-    db: Neo4jSession = Depends(get_graph_db_session) # Added db session dependency
+    db: Neo4jSession = Depends(get_graph_db_session), # Added db session dependency
+    current_user: User = Depends(get_current_user)
 ):
     """
     Accepts a high-level goal, uses an LLM to break it down into
@@ -45,8 +46,12 @@ async def parse_goal_into_subtasks(
                     "description": sub_task.description # Using description from SubTask
                 }
                 # Create a Quest node in the graph for each sub-task
-                # graph_crud.create_quest returns a Neo4j Node object
-                new_quest_node = db.write_transaction(graph_crud.create_quest, quest_data)
+                # and link it to the current user.
+                # graph_crud.create_quest_and_link_to_user will be implemented next
+                # and is expected to return a Neo4j Node object.
+                new_quest_node = db.write_transaction(
+                    graph_crud.create_quest_and_link_to_user, quest_data, current_user.email
+                )
                 # FastAPI will automatically convert the Node to schemas.Quest
                 # due to model_config = {"from_attributes": True} in schemas.Quest
                 created_quests.append(new_quest_node)
