@@ -292,7 +292,7 @@ def test_process_accomplishment_non_existent_user(clean_db_client, monkeypatch):
     # Mock AI services as they are called before the user check
     from unittest.mock import AsyncMock, MagicMock
     from api.ai.schemas import ExtractedSkills, SkillLevel, SkillMatch
-    # No longer need to import api.crud here for original_crud_get_user_by_email
+    from api import crud # Import crud to get its original function
 
     mock_chain_instance = MagicMock()
     mock_extracted_skills_response = ExtractedSkills(skills=[]) # No skills needed for this test
@@ -303,56 +303,74 @@ def test_process_accomplishment_non_existent_user(clean_db_client, monkeypatch):
         return SkillMatch(is_duplicate=False, existing_skill_name=None)
     monkeypatch.setattr("api.routers.accomplishments.find_skill_match", mock_find_skill_match)
 
-
-    # Attempt to create an accomplishment for a user that doesn't exist
-    # We need a token from an existing user to pass auth.
-    # The current_user.email derived from the token will be checked in the SQL DB.
-    # We will mock `crud.get_user_by_email` to return None for this user.
-
     unique_id = uuid.uuid4().hex[:8]
-    # This user will be created in the SQL DB so that `get_current_user` succeeds.
-    user_to_mock_as_non_existent_in_accomplishment_check = f"user.for.accomplishment.check.{unique_id}@skillforge.io"
+    user_email_for_test = f"user.stateful.mock.{unique_id}@skillforge.io"
     user_password = "password123"
 
-    # Create this user in the SQL DB first to be able to log in and get a token
-    user_payload = {"email": user_to_mock_as_non_existent_in_accomplishment_check, "name": "Test User Accomplishment Check", "password": user_password}
+    # Create the user in the SQL DB so auth can find them initially
+    user_payload = {"email": user_email_for_test, "name": "Stateful Mock Test User", "password": user_password}
     user_response = client.post("/users/", json=user_payload)
     assert user_response.status_code == 201, f"User creation failed: {user_response.text}"
+    # We need to simulate a RowProxy object that the original get_user_by_email returns.
+    # A simple dict or Pydantic model might not have all attributes accessed by User.model_validate.
+    # Fetching the user properly and then using its attributes is safer.
+    # However, the /users/ endpoint returns a User schema, not a RowProxy.
+    # For the mock, returning a dict that can be validated by schemas.User should be sufficient.
+    created_user_data_for_mock = {"id": user_response.json()["id"], "email": user_email_for_test, "hashed_password": "mock_hashed_password", "is_active": True}
 
-    # Log in to get a token for this user
-    login_data = {"username": user_to_mock_as_non_existent_in_accomplishment_check, "password": user_password}
+
+    # Log in to get a token
+    login_data = {"username": user_email_for_test, "password": user_password}
     token_response = client.post("/token", data=login_data)
     assert token_response.status_code == 200, f"Token retrieval failed: {token_response.text}"
     access_token = token_response.json()["access_token"]
     auth_headers = {"Authorization": f"Bearer {access_token}"}
 
-    # Now, mock `crud.get_user_by_email` specifically where it's imported in api.routers.accomplishments
-    from api.routers import accomplishments as accomplishments_router
+    # Store the original crud.get_user_by_email from api.crud
+    original_api_crud_get_user_by_email = crud.get_user_by_email
 
-    # Store the original get_user_by_email from the accomplishments_router.crud context
-    original_accomplishments_crud_get_user_by_email = accomplishments_router.crud.get_user_by_email
+    call_count = 0 # This needs to be part of the mock function's scope or a class attribute if mock is a class method
 
-    def mock_accomplishment_get_user_returns_none(db_conn, *, email):
-        if email == user_to_mock_as_non_existent_in_accomplishment_check:
-            return None # Simulate user not found ONLY for the check within process_accomplishment
-        # Fallback for any other email, though not expected for this specific mock's purpose
-        return original_accomplishments_crud_get_user_by_email(db_conn, email=email)
+    # Define the stateful mock function within the test function's scope
+    # so it can access 'call_count' and 'user_email_for_test' and 'created_user_data_for_mock'
+    class CallCounter:
+        def __init__(self):
+            self.count = 0
+        def increment(self):
+            self.count += 1
+        def current_count(self):
+            return self.count
 
-    # Patch the crud.get_user_by_email that is referenced by the accomplishments router
-    monkeypatch.setattr(accomplishments_router.crud, "get_user_by_email", mock_accomplishment_get_user_returns_none)
+    counter = CallCounter()
+
+    def mock_get_user_by_email_stateful(db_conn, *, email):
+        counter.increment()
+
+        if email == user_email_for_test:
+            if counter.current_count() == 1:  # First call (expected from get_current_user in auth)
+                # Return a dict that can be validated by schemas.User
+                return created_user_data_for_mock
+            elif counter.current_count() == 2:  # Second call (expected from process_accomplishment)
+                return None  # Simulate user not found for the endpoint's specific check
+
+        # Fallback for any other emails or unexpected calls
+        return original_api_crud_get_user_by_email(db_conn, email=email)
+
+    # Patch crud.get_user_by_email at its source (api.crud)
+    monkeypatch.setattr("api.crud.get_user_by_email", mock_get_user_by_email_stateful)
 
     accomplishment_payload_for_endpoint = {
-        "user_email": user_to_mock_as_non_existent_in_accomplishment_check,
-        "name": "Test Accomplishment for Non-Existent SQL User",
-        "description": "This should fail because the SQL user check within process_accomplishment is mocked.",
+        "user_email": user_email_for_test,
+        "name": "Test Accomplishment for Stateful Mock",
+        "description": "This should now trigger the 404 from process_accomplishment.",
     }
 
     response = client.post(
         "/accomplishments/process", json=accomplishment_payload_for_endpoint, headers=auth_headers
     )
 
-    assert response.status_code == 404
+    assert response.status_code == 404, f"Expected 404, got {response.status_code}. Response: {response.text}"
     assert response.json()["detail"] == "User not found"
 
-    # Restore original function in the accomplishments_router.crud context
-    monkeypatch.setattr(accomplishments_router.crud, "get_user_by_email", original_accomplishments_crud_get_user_by_email)
+    # Restore original function
+    monkeypatch.setattr("api.crud.get_user_by_email", original_api_crud_get_user_by_email)
