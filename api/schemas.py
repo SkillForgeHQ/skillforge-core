@@ -77,7 +77,6 @@ class Quest(QuestBase):
 
 
 class AccomplishmentCreate(BaseModel):
-    user_email: str # Added user_email as it's needed for creating an accomplishment
     name: str
     description: str
     proof_url: Optional[str] = None

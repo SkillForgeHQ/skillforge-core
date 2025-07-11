@@ -63,7 +63,7 @@ async def process_accomplishment(
 
             accomplishment_node = session.write_transaction(
                 graph_crud.create_accomplishment,
-                current_user.email,
+                current_user, # Pass the entire User object
                 accomplishment_payload,  # Send the dict without quest_id
                 quest_id=quest_id # Pass quest_id separately
             )

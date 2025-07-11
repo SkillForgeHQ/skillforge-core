@@ -1,6 +1,7 @@
 import uuid
 from neo4j import GraphDatabase
 from typing import List
+from . import schemas # Import schemas
 
 # Create Operations
 
@@ -168,7 +169,7 @@ def create_quest_and_link_to_user(tx, quest_data, user_email):
     return quest_node
 
 # ---- Accomplishment CRUD Operations ----
-def create_accomplishment(tx, user_email, accomplishment_data, quest_id: str = None):
+def create_accomplishment(tx, user: schemas.User, accomplishment_data, quest_id: str = None):
     """
     Creates an Accomplishment, links it to the user, and optionally
     links it to the Quest it fulfills.
@@ -192,7 +193,8 @@ def create_accomplishment(tx, user_email, accomplishment_data, quest_id: str = N
     CREATE (u)-[:COMPLETED]->(a)
     RETURN a
     """
-    result = tx.run(query, user_email=user_email, props=props_to_set).single()
+    # Use user.email from the user object
+    result = tx.run(query, user_email=user.email, props=props_to_set).single()
     accomplishment_node = result['a']
 
     # Determine the quest_id to use: either from the direct parameter or from accomplishment_data
