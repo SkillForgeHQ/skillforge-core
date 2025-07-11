@@ -71,7 +71,7 @@ def test_issue_vc_for_accomplishment(monkeypatch, test_keys, clean_db_client):
     auth_headers = {"Authorization": f"Bearer {access_token}"}
 
     accomplishment_payload = {
-        "user_email": user_email, # Added user_email
+        # "user_email": user_email, # Field removed from schema
         "name": "Built a Test Case",
         "description": "Successfully wrote a pytest case for VC generation.",
         # proof_url is optional
@@ -149,141 +149,72 @@ def test_process_accomplishment_with_quest_id(monkeypatch, clean_db_client, test
     access_token = token_response.json()["access_token"]
     auth_headers = {"Authorization": f"Bearer {access_token}"}
 
-    # 2. Create a Quest (using the new endpoint)
-    # We need to mock the graph_db_session for the quests router as well
-    mock_quest_db_session = MagicMock()
-
-    def mock_quest_write_transaction(func, quest_data_dict):
-        # Simulate quest creation in DB for the /quests/ endpoint call
-        return { "id": uuid.uuid4(), **quest_data_dict }
-
-    mock_quest_db_session.write_transaction = mock_quest_write_transaction
-
-    # Patch where get_graph_db_session is imported in api.routers.quests
-    with patch("api.routers.quests.get_graph_db_session") as mock_get_quest_db:
-        mock_get_quest_db.return_value.__enter__.return_value = mock_quest_db_session
-
-        quest_create_payload = {"name": "My Test Quest", "description": "Quest for testing accomplishments."}
-        quest_response = client.post("/quests/", json=quest_create_payload) # No auth for quest creation in this example
-        assert quest_response.status_code == 200, quest_response.text
-        created_quest = quest_response.json()
-        quest_id = created_quest["id"]
+    # 2. Create a Quest
+    # No need to mock graph_db_session for quests if it uses the main DB normally
+    # and the clean_db_client fixture ensures the DB is ready.
+    # If quest creation is simple and doesn't involve complex graph operations that need mocking for this test,
+    # we can let it hit the test graph DB.
+    quest_create_payload = {"name": "My Test Quest", "description": "Quest for testing accomplishments."}
+    # Assuming quest creation doesn't require special auth for this test flow, or uses the same user token
+    quest_response = client.post("/quests/", json=quest_create_payload, headers=auth_headers) # Added auth if needed
+    assert quest_response.status_code == 200, quest_response.text # FastAPI default is 200 for POST if not specified
+    created_quest = quest_response.json()
+    quest_id = created_quest["id"]
 
     # 3. Process Accomplishment with quest_id
+    # The user_email field is now correctly removed from the payload.
     accomplishment_payload = {
-        "user_email": user_email, # Added user_email
         "name": "Completed Task for Quest",
         "description": "This accomplishment fulfills the test quest.",
         "quest_id": quest_id
     }
 
-    # Mock the graph_crud.create_accomplishment to verify it's called with quest_id
-    # This mock will apply to the call within the /accomplishments/process endpoint
     with patch("api.graph_crud.create_accomplishment") as mock_create_accomplishment_crud:
-        # Define what the mocked CRUD function should return
-        # It needs to return a dictionary that can be validated by AccomplishmentSchema
-        mock_accomplishment_node = {
-            "id": uuid.uuid4(),
+        # Mock return value for graph_crud.create_accomplishment
+        # This node should represent what's stored and then used to build the response.
+        # It should align with the Accomplishment schema for response validation.
+        # Note: user_email and quest_id are not part of the node properties in the graph typically,
+        # but are used for creating relationships or are part of the response model.
+        # The mock here should return what the `AccomplishmentSchema.model_validate` would expect.
+        mock_returned_node_data = {
+            "id": uuid.uuid4(), # Simulate DB-generated ID
             "name": accomplishment_payload["name"],
             "description": accomplishment_payload["description"],
-            "proof_url": None,
-            "timestamp": "2023-01-01T12:00:00Z", # Example timestamp
-            "user_email": user_email, # Added user_email for schema validation
-            "quest_id": quest_id # Added quest_id for schema validation
+            "proof_url": None, # Assuming no proof_url sent
+            "timestamp": "2023-01-01T12:00:00Z", # Simulate DB-generated timestamp
+            # user_email is not stored on the node but added to response from current_user
+            # quest_id is not stored on the node but used for relationship
         }
-        mock_create_accomplishment_crud.return_value = mock_accomplishment_node
+        mock_create_accomplishment_crud.return_value = mock_returned_node_data
 
         acc_response = client.post("/accomplishments/process", json=accomplishment_payload, headers=auth_headers)
         assert acc_response.status_code == 200, acc_response.text
 
         response_data = acc_response.json()
         assert response_data["accomplishment"]["name"] == accomplishment_payload["name"]
-        # The quest_id is part of the AccomplishmentCreate schema but not directly in Accomplishment schema by default.
-        # The key is to verify that graph_crud.create_accomplishment was called correctly.
 
-        # Verify that the mock_create_accomplishment_crud was called with the quest_id
+        # Verify that graph_crud.create_accomplishment was called correctly.
         mock_create_accomplishment_crud.assert_called_once()
         args, kwargs = mock_create_accomplishment_crud.call_args
-        # args are (tx, user_email, accomplishment_data_dict)
-        # kwargs are {quest_id: ...}
-        # The quest_id from the payload (string) is converted to UUID by Pydantic model AccomplishmentCreate
-        # So, when it's passed to the CRUD function, it's a UUID object.
-        # We compare it with the original string quest_id from the test.
-        assert str(kwargs.get("quest_id")) == quest_id
-        # Ensure the User object's email matches
+
+        # Verify the user is identified from the token, not the payload.
+        # args[0] is the transaction (tx), args[1] is the user object.
         assert args[1].email == user_email
-        # Ensure the main payload (without quest_id) is passed as accomplishment_data
-        expected_acc_payload = accomplishment_payload.copy()
-        expected_acc_payload.pop("quest_id") # quest_id is passed as a separate kwarg
-        # The router also adds user_email to the payload sent to CRUD.
-        # However, our schema for AccomplishmentCreate now includes user_email.
-        # The router extracts quest_id, and the rest of accomplishment_data (which includes user_email) is passed.
-        # So, we need to ensure that the payload sent to CRUD matches what the router prepares.
-        # accomplishment_data.model_dump(exclude_unset=True) is used in the router.
-        # Let's adjust the assertion for accomplishment_data_dict
-        # In the router:
-        # accomplishment_payload = accomplishment_data.model_dump(exclude_unset=True)
-        # quest_id = accomplishment_payload.pop("quest_id", None)
-        # So, args[2] (accomplishment_data_dict) should be accomplishment_payload *without* quest_id but *with* user_email (if it was in the input)
-        # The AccomplishmentCreate schema has user_email, so it should be in the model_dump.
-        # The current test sends `accomplishment_payload` which does not have user_email.
-        # Let's align the test payload with the schema.
 
-        # Re-check payload for `graph_crud.create_accomplishment`
-        # The router's `accomplishment_data: AccomplishmentCreate` will have `user_email` from the schema.
-        # The test payload `accomplishment_payload` should also include `user_email`.
-        # The `current_user.email` is used for the `user_email` argument to `graph_crud.create_accomplishment`.
-        # The `accomplishment_data.model_dump()` is used for the `accomplishment_data` argument.
+        # Verify quest_id is passed as a kwarg.
+        # The quest_id in the payload is a string, Pydantic converts it to UUID for the AccomplishmentCreate model.
+        # This UUID is then passed to the CRUD function.
+        assert isinstance(kwargs.get("quest_id"), uuid.UUID)
+        assert str(kwargs.get("quest_id")) == quest_id
 
-        # Correct assertion for args[2] (the dict passed as accomplishment_data to crud)
-        # The router does: `accomplishment_data.model_dump(exclude_unset=True)` then `pop("quest_id")`
-        # The input `accomplishment_payload` for the endpoint should match `AccomplishmentCreate`
-        # Our `AccomplishmentCreate` schema has `user_email`.
-        # The test payload for the endpoint should be:
-        # { "name": ..., "description": ..., "quest_id": ..., "user_email": ...}
 
-        # Let's re-evaluate the call to the endpoint and the mock assertion.
-        # The `accomplishment_payload` used for `client.post` should include `user_email`.
-        # The router will then get `current_user.email` for the first arg to crud,
-        # and `accomplishment_data.model_dump().pop('quest_id')` for the second arg.
-
-        # The current `accomplishment_payload` for the endpoint is missing `user_email`.
-        # Let's assume the schema `AccomplishmentCreate` has `user_email` and it's populated correctly.
-        # The router code is:
-        # `accomplishment_payload_dict = accomplishment_data.model_dump(exclude_unset=True)`
-        # `quest_id_from_payload = accomplishment_payload_dict.pop("quest_id", None)`
-        # `session.write_transaction(graph_crud.create_accomplishment, current_user.email, accomplishment_payload_dict, quest_id=quest_id_from_payload)`
-        # So, `args[2]` should be `accomplishment_payload_dict` (which is `accomplishment_data.model_dump()` minus `quest_id`).
-
-        # Our test `accomplishment_payload` sent to the endpoint has `name`, `description`, `quest_id`.
-        # The `AccomplishmentCreate` schema also has `user_email`.
-        # So, when `accomplishment_data.model_dump(exclude_unset=True)` is called in the router,
-        # it will produce a dict with `name`, `description`, `quest_id`, and `user_email`.
-        # Then `quest_id` is popped.
-        # So `args[2]` should contain `name`, `description`, `user_email`.
-
-        expected_crud_payload = {
-            "name": accomplishment_payload["name"],
-            "description": accomplishment_payload["description"],
-            "user_email": user_email # This comes from the AccomplishmentCreate model
-        }
-        # The actual payload sent to the endpoint did not include user_email, but the schema implies it.
-        # FastAPI would inject it if it's part of the Pydantic model.
-        # Let's assume the model binding works and `user_email` is in `accomplishment_data` in the router.
-
+        # Verify the accomplishment data is passed correctly.
+        # args[2] is the accomplishment data dictionary. This comes from accomplishment_data.model_dump(exclude_unset=True)
+        # after quest_id has been popped. It should not contain user_email as that was removed from AccomplishmentCreate.
         assert args[2]["name"] == accomplishment_payload["name"]
         assert args[2]["description"] == accomplishment_payload["description"]
-        assert args[2]["user_email"] == user_email # This field is in AccomplishmentCreate schema
-
-        # Verify the response structure if needed
-        assert response_data["accomplishment"]["name"] == accomplishment_payload["name"]
-        # If your AccomplishmentSchema includes quest_id, you can assert it here
-        # assert response_data["accomplishment"]["quest_id"] == quest_id
-        # However, the provided Accomplishment schema does not have quest_id, so we check the CRUD call.
-
-    # Further check: if you have a way to fetch the accomplishment and see if it's linked to the quest.
-    # This would require another DB call, e.g., get_accomplishment_details and check for a FULFILLS relationship.
-    # For now, verifying the CRUD call is sufficient for this unit test's scope.
+        assert "user_email" not in args[2] # Explicitly check user_email is NOT in the payload dict
+        assert "quest_id" not in args[2] # Explicitly check quest_id is NOT in the payload dict (passed separately)
 
 
 # Make sure to import your app and the dependency you want to override
@@ -305,7 +236,7 @@ def test_process_accomplishment_for_non_existent_user(clean_db_client): # Remove
     def mock_get_current_user_for_ghost():
         # Ensure the mock User object matches the fields expected by the application.
         # User ID is an int, is_active is a bool.
-        return User(id=9999, email=non_existent_user_email, name="Ghost User", is_active=True)
+        return User(id=9999, email=non_existent_user_email, is_active=True) # Removed name as it's not in User schema
 
     # Apply the override to the app instance used by the TestClient from the fixture
     client.app.dependency_overrides[get_current_user] = mock_get_current_user_for_ghost
@@ -314,39 +245,44 @@ def test_process_accomplishment_for_non_existent_user(clean_db_client): # Remove
     # This part can remain if these services are indeed called before the user_exists check.
     # If user_exists is the very first check after auth, these might not be strictly necessary
     # for this specific test's failure condition, but keeping them doesn't hurt.
-    from unittest.mock import AsyncMock, MagicMock
+    from unittest.mock import AsyncMock, MagicMock, patch # Added patch
     from api.ai.schemas import ExtractedSkills, SkillLevel, SkillMatch
 
-    # It's cleaner to use a context manager for monkeypatching if still needed for other parts,
-    # or pass monkeypatch as an argument if other mocks within this test require it.
-    # For now, assuming AI mocks are set up as they were, if they are still relevant.
-    # If `get_current_user` is the only thing to mock for this test path, these can be removed.
-    # Let's assume they are still needed for the endpoint to proceed to the user_exists check.
+    # For this test, we primarily care that the user_exists check fails.
+    # We can simplify AI mocks if they are not crucial for reaching that check.
+    # Let's assume they are needed and keep them minimal.
+    with patch("api.routers.accomplishments.skill_extractor_chain.ainvoke", new_callable=AsyncMock, return_value=ExtractedSkills(skills=[])) as mock_skill_extract, \
+         patch("api.routers.accomplishments.find_skill_match", new_callable=AsyncMock, return_value=SkillMatch(is_duplicate=False)) as mock_skill_match, \
+         patch("api.graph_crud.user_exists") as mock_user_exists_crud: # Patch user_exists directly
 
-    # Re-creating a simple mock setup for AI parts if they are indeed called.
-    # If monkeypatch fixture is removed, these need to be done via app.dependency_overrides too if they are dependencies,
-    # or by directly patching the imported objects if they are not FastAPI dependencies.
-    # For simplicity, and since the original test had them, let's assume direct patching is okay for these.
-    # However, the original test used monkeypatch fixture. If that's removed, this needs rethinking.
-    # Let's assume `clean_db_client` doesn't preclude `monkeypatch` if needed for other things.
-    # The prompt implies `client` is sufficient, so removing monkeypatch argument.
-    # If AI mocks are still needed, they should be done without monkeypatch argument here.
+        # Configure the mock_user_exists_crud to return False for the ghost user
+        def side_effect_user_exists(tx, email_to_check): # tx is the first arg for graph_crud.user_exists
+            if email_to_check == non_existent_user_email:
+                return False
+            return True # Default to True for other users if any were created
+        mock_user_exists_crud.side_effect = side_effect_user_exists
 
-    # The example shows client fixture without monkeypatch, so we will proceed without it for AI mocks too.
-    # This implies AI services might not be dependencies injected by FastAPI in the same way, or the test setup handles them.
-    # For now, focusing on the get_current_user override.
+        accomplishment_payload = {
+            # "user_email": non_existent_user_email, # Removed as it's not part of the schema anymore
+            "name": "Accomplishment for Ghost",
+            "description": "This should fail with a 404.",
+        }
 
-    accomplishment_payload = {
-        "user_email": non_existent_user_email,
-        "name": "Accomplishment for Ghost",
-        "description": "This should fail with a 404.",
-    }
+        response = client.post("/accomplishments/process", json=accomplishment_payload) # Auth headers are implicitly handled by mock_get_current_user
 
-    response = client.post("/accomplishments/process", json=accomplishment_payload)
-
-    # Clean up the override so it doesn't affect other tests
-    app.dependency_overrides.clear()
+        # Clean up the override so it doesn't affect other tests
+        # app.dependency_overrides.clear() # This is tricky with TestClient from fixture, usually handled by fixture scope
+        # The clean_db_client fixture should provide a fresh app or handle overrides correctly.
+        # For now, let's assume the fixture handles override cleanup or test isolation.
+        # If using pytest's monkeypatch fixture, it handles cleanup automatically.
+        # Direct app.dependency_overrides might persist if not cleaned.
+        # A better way is to use `with client.app.dependency_overrides(get_current_user=mock_get_current_user_for_ghost):`
 
     assert response.status_code == 404
     assert "not found" in response.json()["detail"].lower()
     assert non_existent_user_email in response.json()["detail"]
+
+    # Explicitly clear overrides if the fixture doesn't handle it, to be safe for subsequent tests.
+    # This is important if `app` is a shared instance across tests.
+    # However, `clean_db_client` typically creates a new TestClient with a fresh app for each test.
+    client.app.dependency_overrides.clear()
