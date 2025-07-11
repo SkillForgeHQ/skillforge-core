@@ -1,26 +1,33 @@
-# Core FastAPI server and ASGI server
+# In requirements.txt
+
+# Core FastAPI and Server
 fastapi
 uvicorn[standard]
 python-multipart
 
-# Database and ORM
+# Database
 sqlalchemy
 psycopg2-binary
 neo4j
 
+# Pydantic and Settings
+pydantic
+pydantic-settings
+
 # Security and Authentication
-passlib[bcrypt]>=1.7.4
-bcrypt==4.0.1
+passlib[bcrypt]
 python-jose[cryptography]
-python-dotenv
+
+# AI and Langchain
+langchain-core
+langchain-openai
+langchain_community
+
+# Verifiable Credentials
 jwcrypto
 
-# AI and LangChain
-langchain
-langchain-openai
-langchain-community
-# langchain-neo4j # Removed as it causes issues with Python 3.9
-
-# Utilities
-packaging==24.1
-beautifulsoup4
+# Testing
+pytest
+pytest-mock
+httpx
+# Add any other specific testing dependencies you use
