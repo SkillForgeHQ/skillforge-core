@@ -2,57 +2,42 @@ Project Context for SkillForge AI Development
 1. Mission & Vision
 Project Name: SkillForge
 
-Vision: To create an AI-driven platform that moves beyond abstract skill labels and builds a user's professional story through a graph of concrete, verifiable accomplishments. SkillForge maps a user's goals to a personalized learning path of "quests," verifies the work they've done, and issues portable, cryptographic credentials for their accomplishments.
+Vision: To create an AI-driven platform that builds a user's professional story through a graph of concrete, verifiable accomplishments. SkillForge maps goals to a personalized path of "quests," verifies completed work, and issues portable, cryptographic credentials for each accomplishment.
 
 2. Core Architecture: The Accomplishment Graph
-SkillForge's architecture is built on an evidence-based model centered on tangible work. A user's proficiency is demonstrated by the work they've verifiably completed.
+SkillForge's architecture is built on an evidence-based model centered on tangible work. The final, fully-connected graph structure is:
 
-The core graph structure is:
-(User)-[:HAS_QUEST]->(Quest)<-[:FULFILLS]-(Accomplishment)<-[:COMPLETED {vc_id, vc_issuanceDate}]-(User)
+(u:User)-[:HAS_QUEST]->(q:Quest)
+(a:Accomplishment)-[:FULFILLS]->(q:Quest)
+(u:User)-[c:COMPLETED]->(a:Accomplishment)
+(a:Accomplishment)-[:DEMONSTRATES]->(s:Skill)
 
-How it works:
+Key Features:
 
-A user's high-level goal is parsed into a series of concrete Quest nodes, which are assigned to the user via a [:HAS_QUEST] relationship.
+Quest Assignment: The POST /goals/parse endpoint uses an LLM to break down a user's goal into :Quest nodes, which are immediately linked to the user via a [:HAS_QUEST] relationship.
 
-The user submits proof of work as an Accomplishment, which is linked to the [:Quest] it fulfills.
+Evidence-Based Accomplishments: Users submit work against a quest, creating an :Accomplishment node linked via [:FULFILLS]. User identity is handled exclusively by the auth token.
 
-Upon issuing a Verifiable Credential (VC), a receipt is stored as properties on the [:COMPLETED] relationship, creating a full, auditable trail.
+Verifiable Credential (VC) Issuance: The POST /accomplishments/{id}/issue-credential endpoint generates a signed JWT-based VC. A receipt (vc_id, vc_issuanceDate) is stored as properties on the [:COMPLETED] relationship, creating a complete, auditable trail from assignment to credential.
 
-3. Core Feature: Verifiable Credential (VC) Issuance
-The primary product loop culminates in the issuance of a Verifiable Credential. This provides our users with portable, tamper-proof, cryptographic proof of their work.
+3. Technology Stack & Deployment
+Backend: FastAPI (Python)
 
-Technical Implementation:
+Databases: PostgreSQL (for user auth/data), Neo4j (for the knowledge graph)
 
-Standard: W3C Verifiable Credentials Data Model.
+AI/LLM: LangChain with gpt-4o-mini and other models.
 
-Format: VCs are issued as JSON Web Tokens (JWTs).
+Cryptography: jwcrypto for key management, python-jose for JWTs.
 
-Cryptography: Credentials are signed using the ES256 algorithm.
+Containerization & Deployment: The full stack is containerized with Docker (docker-compose.yml) and deployed on Render.
 
-4. Current Tech Stack & Deployment
-Backend Framework: FastAPI (Python)
+4. CI/CD & Testing Environment
+Platform: GitHub Actions (.github/workflows/ci.yml).
 
-Databases:
+Services: The CI pipeline runs postgres and neo4j as service containers.
 
-Application Data: PostgreSQL
+Environment Configuration: Test configuration (database URLs, credentials) is forcefully set within tests/conftest.py using pytest_configure to ensure absolute consistency and override any environment variables from the runner.
 
-Knowledge Graph: Neo4j
+Service Lifecycle: The CI workflow includes a dedicated "Wait for services" step that uses nc (netcat) to probe the database ports, ensuring the tests only run after the services are fully accessible. This resolves all previous Connection refused race condition errors.
 
-AI/LLM: LangChain with gpt-4o-mini.
-
-Cryptography: jwcrypto for key management, python-jose for JWT operations.
-
-Deployment: The full stack is containerized with Docker and deployed on Render.
-
-5. Key Code Files & Directories
-api/main.py: The entry point for the FastAPI application.
-
-api/schemas.py: All Pydantic schemas.
-
-api/graph_crud.py: All functions that execute Cypher queries against Neo4j.
-
-api/routers/: Directory containing API endpoint definitions.
-
-goals.py: Contains the POST /goals/parse endpoint which now creates and assigns :Quest nodes.
-
-accomplishments.py: Contains endpoints for submitting accomplishments and issuing VCs.
+Test Suite: pytest is used for all tests. The suite includes unit, integration, and end-to-end tests that mock AI services and use dependency overrides (app.dependency_overrides) for testing protected endpoints.
