@@ -55,15 +55,35 @@ jobs:
           # Ensure you are installing from the correct file name
           pip install -r requirements.txt
 
-      - name: Run Tests
+      - name: Wait for services to be ready
+        run: |
+          echo "Waiting for PostgreSQL..."
+          while ! nc -z localhost 5432; do
+            sleep 0.1 # wait for 1/10 of a second before check again
+          done
+          echo "PostgreSQL is up!"
+
+          echo "Waiting for Neo4j..."
+          while ! nc -z localhost 7687; do
+            sleep 0.1
+          done
+          echo "Neo4j is up!"
+
+      - name: Initialize Databases
         env:
-          # These credentials MUST match the services block above
           DATABASE_URL: postgresql://testuser:testpassword@localhost:5432/skillforge_test
           NEO4J_URI: neo4j://localhost:7687
           NEO4J_USERNAME: neo4j
           NEO4J_PASSWORD: testpassword
-          SECRET_KEY: "a-secret-key-for-testing"
+          # SECRET_KEY and ACCESS_TOKEN_EXPIRE_MINUTES are not strictly needed for init_db.py
+          # but including them for completeness or if init_db.py logic changes.
+          # OPENAI_API_KEY is also not typically needed for DB init.
+          SECRET_KEY: "testsecretkey"
           ACCESS_TOKEN_EXPIRE_MINUTES: "30"
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-        # Use python -m pytest to ensure the correct executable is used
+          OPENAI_API_KEY: "sk-testplaceholderkey"
+        run: python init_db.py
+
+      - name: Run Tests
+        # No need for the env block here, as conftest.py handles it
+        # (conftest.py's pytest_configure will set these for the test execution context)
         run: python -m pytest
