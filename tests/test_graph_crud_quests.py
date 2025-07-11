@@ -1,7 +1,7 @@
 import pytest
 import uuid
 from api.graph_crud import create_quest, create_accomplishment, get_accomplishment_details
-from api.schemas import Quest, AccomplishmentCreate
+from api.schemas import Quest, AccomplishmentCreate, User # Added User import
 
 # Fixture for a mock Neo4j transaction
 @pytest.fixture
@@ -95,15 +95,19 @@ def test_create_quest_and_link_to_user(mock_tx, mocker): # Added mocker
     assert result_quest_node['description'] == quest_data['description']
 
 
-def test_create_accomplishment_without_quest(mock_tx):
+def test_create_accomplishment_without_quest(mock_tx, mocker): # Added mocker
     user_email = "test@example.com"
+    # Create a mock User object that has an 'email' attribute
+    mock_user = mocker.Mock(spec=User)
+    mock_user.email = user_email
+
     accomplishment_data = {"name": "Test Accomplishment", "description": "Done something."}
     expected_accomplishment_id = uuid.uuid4()
 
     # Mock the return for creating the accomplishment
     mock_tx.run.return_value.single.return_value = {"a": {"id": expected_accomplishment_id, **accomplishment_data}}
 
-    result = create_accomplishment(mock_tx, user_email, accomplishment_data)
+    result = create_accomplishment(mock_tx, mock_user, accomplishment_data) # Pass mock_user
 
     assert mock_tx.run.call_count == 1 # Only one call for accomplishment creation
     call_args_list = mock_tx.run.call_args_list
@@ -125,6 +129,10 @@ def test_create_accomplishment_without_quest(mock_tx):
 
 def test_create_accomplishment_with_quest(mock_tx, mocker): # Added mocker
     user_email = "test@example.com"
+    # Create a mock User object that has an 'email' attribute
+    mock_user = mocker.Mock(spec=User)
+    mock_user.email = user_email
+
     accomplishment_data = {"name": "Test Accomplishment for Quest", "description": "Done something for a quest."}
     quest_id = str(uuid.uuid4())
     expected_accomplishment_id = uuid.uuid4()
@@ -136,7 +144,7 @@ def test_create_accomplishment_with_quest(mock_tx, mocker): # Added mocker
         mocker.Mock()  # For MERGE FULFILLS relationship
     ]
 
-    result = create_accomplishment(mock_tx, user_email, accomplishment_data, quest_id=quest_id)
+    result = create_accomplishment(mock_tx, mock_user, accomplishment_data, quest_id=quest_id) # Pass mock_user
 
     assert mock_tx.run.call_count == 2 # Two calls: one for creation, one for linking
     call_args_list = mock_tx.run.call_args_list
