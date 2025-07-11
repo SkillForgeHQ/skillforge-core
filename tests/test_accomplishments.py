@@ -244,8 +244,7 @@ def test_process_accomplishment_for_non_existent_user(clean_db_client):
         )
 
         assert response.status_code == 404, response.text
-        # The user message was updated in a previous commit to "User not found."
-        assert response.json()["detail"] == "User not found."
+        assert response.json()["detail"] == f"User with email {non_existent_user_email} not found."
         mock_user_exists_crud.assert_called_once_with(mock.ANY, non_existent_user_email)
 
     # Clean up the dependency override to not affect other tests
