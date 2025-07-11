@@ -77,15 +77,19 @@ class Quest(QuestBase):
 
 
 class AccomplishmentCreate(BaseModel):
-    user_email: str # Added user_email as it's needed for creating an accomplishment
     name: str
     description: str
     proof_url: Optional[str] = None
     quest_id: Optional[uuid.UUID] = None
 
 
-class Accomplishment(AccomplishmentCreate):
+class Accomplishment(BaseModel):
     id: uuid.UUID
+    user_email: str  # This field is needed for output
+    name: str
+    description: str
+    proof_url: Optional[str] = None
+    quest_id: Optional[uuid.UUID] = None
     timestamp: datetime
 
     model_config = {"from_attributes": True}

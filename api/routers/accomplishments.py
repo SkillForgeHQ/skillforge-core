@@ -38,46 +38,41 @@ class AccomplishmentResponse(BaseModel):
     tags=["Accomplishments"],
 )
 async def process_accomplishment(
-    accomplishment_data: AccomplishmentCreate = Body(...),
+    accomplishment_data: AccomplishmentCreate, # Removed Body(...)
     driver: Driver = Depends(get_graph_db_driver),
     current_user: User = Depends(get_current_user),
 ):
     """
     Analyzes a user's accomplishment, extracts skills, and updates the knowledge graph.
-    - Creates an Accomplishment node and links it to the user.
-    - Extracts skills and mastery levels using an LLM from the accomplishment's description.
-    - Compares extracted skills against existing skills in the graph to avoid duplicates.
-    - Creates new skill nodes for non-duplicate skills (including default mastery levels).
-    - Links the newly created accomplishment to each relevant skill.
+    The user is identified SOLELY by the authentication token.
     """
     try:
-        # Step 0: Validate user exists
-        with driver.session() as session:
-            if not session.read_transaction(graph_crud.user_exists, current_user.email):
-                raise HTTPException(status_code=404, detail=f"User with email {current_user.email} not found.")
+        # Step 0: User validation is now implicitly handled by get_current_user.
+        # No separate user_exists check is needed if the token guarantees a valid user.
 
-        # Step 1: Create the Accomplishment node and link it to the user
+        # Step 1: Create the Accomplishment node
         with driver.session() as session:
+            # The Pydantic model no longer has user_email
             accomplishment_payload = accomplishment_data.model_dump(exclude_unset=True)
-            quest_id = accomplishment_payload.pop("quest_id", None) # Extract quest_id
+            quest_id = accomplishment_payload.pop("quest_id", None)
 
             accomplishment_node = session.write_transaction(
                 graph_crud.create_accomplishment,
-                current_user.email,
-                accomplishment_payload,  # Send the dict without quest_id
-                quest_id=quest_id # Pass quest_id separately
+                current_user.email,  # <-- Use the email from the token
+                accomplishment_payload,
+                quest_id=quest_id
             )
             # Convert Neo4j Node to Pydantic model.
-            # The accomplishment_node from graph_crud doesn't have user_email directly.
-            # We need to construct a dictionary for validation, including the user_email from the current session.
-            accomplishment_data_for_validation = dict(accomplishment_node) # Convert node to dict
-            accomplishment_data_for_validation['user_email'] = current_user.email
-            # quest_id might also be needed if it's part of AccomplishmentSchema and not on the node
-            if quest_id: # If a quest_id was processed
-                accomplishment_data_for_validation['quest_id'] = quest_id
+            # The accomplishment_node from graph_crud contains all necessary fields.
+            # user_email needs to be added for the AccomplishmentSchema validation.
+            accomplishment_dict = dict(accomplishment_node)
+            accomplishment_dict['user_email'] = current_user.email # Add user_email from token
+            if quest_id and 'quest_id' not in accomplishment_dict: # Ensure quest_id is present if processed
+                 accomplishment_dict['quest_id'] = quest_id
+
 
             created_accomplishment = AccomplishmentSchema.model_validate(
-                accomplishment_data_for_validation
+                accomplishment_dict
             )
 
         # Step 2: Extract skills from the accomplishment description

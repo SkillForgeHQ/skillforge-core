@@ -168,21 +168,17 @@ def create_quest_and_link_to_user(tx, quest_data, user_email):
     return quest_node
 
 # ---- Accomplishment CRUD Operations ----
-def create_accomplishment(tx, user_email, accomplishment_data, quest_id: str = None):
+def create_accomplishment(tx, user_email: str, accomplishment: dict, quest_id: str = None):
     """
-    Creates an Accomplishment, links it to the user, and optionally
-    links it to the Quest it fulfills.
+    Creates an Accomplishment, links it to the user via their email,
+    and optionally links it to a Quest.
     """
-    accomplishment_id_str = str(uuid.uuid4())
-
-    # Prepare data for Cypher query, excluding 'user_email' and 'quest_id' if they exist
-    # as they are handled separately or not part of the node properties.
-    # Add 'id' to the properties.
+    accomplishment_id = str(uuid.uuid4())
     props_to_set = {
-        "id": accomplishment_id_str,
-        "name": accomplishment_data.get("name"),
-        "description": accomplishment_data.get("description"),
-        "proof_url": accomplishment_data.get("proof_url"), # Will be None if not provided
+        "id": accomplishment_id,
+        "name": accomplishment.get("name"),
+        "description": accomplishment.get("description"),
+        "proof_url": accomplishment.get("proof_url"),
     }
 
     query = """
@@ -195,16 +191,13 @@ def create_accomplishment(tx, user_email, accomplishment_data, quest_id: str = N
     result = tx.run(query, user_email=user_email, props=props_to_set).single()
     accomplishment_node = result['a']
 
-    # Determine the quest_id to use: either from the direct parameter or from accomplishment_data
-    final_quest_id = quest_id if quest_id is not None else accomplishment_data.get("quest_id")
-
-    if final_quest_id:
+    if quest_id:
         link_query = """
         MATCH (a:Accomplishment {id: $accomplishment_id})
         MATCH (q:Quest {id: $quest_id})
         CREATE (a)-[:FULFILLS]->(q)
         """
-        tx.run(link_query, accomplishment_id=accomplishment_id_str, quest_id=str(final_quest_id))
+        tx.run(link_query, accomplishment_id=accomplishment_id, quest_id=str(quest_id))
 
     return accomplishment_node
 
