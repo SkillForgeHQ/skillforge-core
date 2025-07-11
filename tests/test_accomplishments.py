@@ -210,8 +210,8 @@ def test_process_accomplishment_with_quest_id(monkeypatch, clean_db_client, test
         # So, when it's passed to the CRUD function, it's a UUID object.
         # We compare it with the original string quest_id from the test.
         assert str(kwargs.get("quest_id")) == quest_id
-        # Ensure user_email is also passed
-        assert args[1] == user_email
+        # Ensure the User object's email matches
+        assert args[1].email == user_email
         # Ensure the main payload (without quest_id) is passed as accomplishment_data
         expected_acc_payload = accomplishment_payload.copy()
         expected_acc_payload.pop("quest_id") # quest_id is passed as a separate kwarg
