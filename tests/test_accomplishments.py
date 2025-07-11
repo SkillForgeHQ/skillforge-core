@@ -284,3 +284,69 @@ def test_process_accomplishment_with_quest_id(monkeypatch, clean_db_client, test
     # Further check: if you have a way to fetch the accomplishment and see if it's linked to the quest.
     # This would require another DB call, e.g., get_accomplishment_details and check for a FULFILLS relationship.
     # For now, verifying the CRUD call is sufficient for this unit test's scope.
+
+
+# Make sure to import your app and the dependency you want to override
+from api.main import app
+# Assuming api.routers.auth is the location of get_current_user based on typical project structure
+# If this path is incorrect, the test will fail, and we can adjust it.
+from api.routers.auth import get_current_user
+from api.schemas import User # User schema for the mock
+
+def test_process_accomplishment_for_non_existent_user(clean_db_client): # Removed monkeypatch
+    """
+    Tests that a 404 is returned when processing an accomplishment
+    for a user that does not exist in the database.
+    """
+    client = clean_db_client # client from fixture (provides TestClient with its own app instance)
+    non_existent_user_email = "ghost@example.com"
+
+    # Define the mock function that will replace the real dependency
+    def mock_get_current_user_for_ghost():
+        # Ensure the mock User object matches the fields expected by the application.
+        # User ID is an int, is_active is a bool.
+        return User(id=9999, email=non_existent_user_email, name="Ghost User", is_active=True)
+
+    # Apply the override to the app instance used by the TestClient from the fixture
+    client.app.dependency_overrides[get_current_user] = mock_get_current_user_for_ghost
+
+    # Mock AI services as they might be called if auth passes
+    # This part can remain if these services are indeed called before the user_exists check.
+    # If user_exists is the very first check after auth, these might not be strictly necessary
+    # for this specific test's failure condition, but keeping them doesn't hurt.
+    from unittest.mock import AsyncMock, MagicMock
+    from api.ai.schemas import ExtractedSkills, SkillLevel, SkillMatch
+
+    # It's cleaner to use a context manager for monkeypatching if still needed for other parts,
+    # or pass monkeypatch as an argument if other mocks within this test require it.
+    # For now, assuming AI mocks are set up as they were, if they are still relevant.
+    # If `get_current_user` is the only thing to mock for this test path, these can be removed.
+    # Let's assume they are still needed for the endpoint to proceed to the user_exists check.
+
+    # Re-creating a simple mock setup for AI parts if they are indeed called.
+    # If monkeypatch fixture is removed, these need to be done via app.dependency_overrides too if they are dependencies,
+    # or by directly patching the imported objects if they are not FastAPI dependencies.
+    # For simplicity, and since the original test had them, let's assume direct patching is okay for these.
+    # However, the original test used monkeypatch fixture. If that's removed, this needs rethinking.
+    # Let's assume `clean_db_client` doesn't preclude `monkeypatch` if needed for other things.
+    # The prompt implies `client` is sufficient, so removing monkeypatch argument.
+    # If AI mocks are still needed, they should be done without monkeypatch argument here.
+
+    # The example shows client fixture without monkeypatch, so we will proceed without it for AI mocks too.
+    # This implies AI services might not be dependencies injected by FastAPI in the same way, or the test setup handles them.
+    # For now, focusing on the get_current_user override.
+
+    accomplishment_payload = {
+        "user_email": non_existent_user_email,
+        "name": "Accomplishment for Ghost",
+        "description": "This should fail with a 404.",
+    }
+
+    response = client.post("/accomplishments/process", json=accomplishment_payload)
+
+    # Clean up the override so it doesn't affect other tests
+    app.dependency_overrides.clear()
+
+    assert response.status_code == 404
+    assert "not found" in response.json()["detail"].lower()
+    assert non_existent_user_email in response.json()["detail"]

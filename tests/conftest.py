@@ -3,16 +3,18 @@ import pytest
 from unittest.mock import patch, MagicMock
 import json
 from jwcrypto import jwk
+import time
+from sqlalchemy import create_engine
+from sqlalchemy.exc import OperationalError
+from fastapi.testclient import TestClient
 
-# This global variable is used by the fixture to manage the patcher lifecycle.
-_neo4j_constructor_patcher = None
-
+# --- Environment Configuration ---
 
 def pytest_configure(config):
-    """Sets TESTING_MODE=True and other default test environment variables very early."""
+    """Sets default environment variables for the test suite."""
     os.environ["TESTING_MODE"] = "True"
     os.environ.setdefault(
-        "DATABASE_URL", "postgresql://testuser:testpass@localhost:5432/testdb_ci"
+        "DATABASE_URL", "postgresql://user:password@localhost:5432/skillforge_test"
     )
     os.environ.setdefault("NEO4J_URI", "neo4j://localhost:7687")
     os.environ.setdefault("NEO4J_USERNAME", "neo4j")
@@ -21,97 +23,86 @@ def pytest_configure(config):
     os.environ.setdefault("SECRET_KEY", "testsecretkey_conftest")
     os.environ.setdefault("ACCESS_TOKEN_EXPIRE_MINUTES", "30")
 
+# --- Mocks and Fixtures ---
 
-@pytest.fixture(autouse=True, scope="session")
-def mock_external_service_constructors(request):
-    """
-    Mocks constructors of external services like Neo4jGraph at a low level.
-    """
-    global _neo4j_constructor_patcher
-    mock_neo4j_class = MagicMock(name="MockLangchainCommunityNeo4jGraphClass")
-    _neo4j_constructor_patcher = patch(
-        "langchain_community.graphs.Neo4jGraph", new=mock_neo4j_class
-    )
-    _neo4j_constructor_patcher.start()
-
-    def fin():
-        global _neo4j_constructor_patcher
-        if _neo4j_constructor_patcher:
-            _neo4j_constructor_patcher.stop()
-            _neo4j_constructor_patcher = None
-
-    request.addfinalizer(fin)
-
+@pytest.fixture(scope="session", autouse=True)
+def mock_neo4j_graph_constructor():
+    """Mocks the Langchain Neo4jGraph constructor for the entire session."""
+    with patch("langchain_community.graphs.Neo4jGraph", MagicMock()) as mock:
+        yield mock
 
 @pytest.fixture(scope="session")
 def test_keys(tmp_path_factory):
-    """
-    Creates a temporary JWK key pair for the test session.
-    """
+    """Creates a temporary JWK key pair for the test session."""
     keys_path = tmp_path_factory.mktemp("keys")
     private_key_path = keys_path / "private_key.json"
     key = jwk.JWK.generate(kty="EC", crv="P-256")
-    private_key_json = key.export_private()
-    public_key_json = key.export_public()
     with open(private_key_path, "w") as f:
-        f.write(private_key_json)
+        f.write(key.export_private())
     return {
         "private_key_path": private_key_path,
-        "public_key": jwk.JWK(**json.loads(public_key_json)),
-        "issuer_id": "https://skillforge.io", # Align with hardcoded issuer in endpoint
+        "public_key": jwk.JWK(**json.loads(key.export_public())),
+        "issuer_id": "https://skillforge.io",
     }
-
 
 @pytest.fixture
 def clean_db_client():
     """
-    Provides a TestClient instance with a clean database state (PostgreSQL and Neo4j)
-    by using an app factory and ensuring database tables are created and emptied.
+    Provides a TestClient instance with a clean database state.
+
+    **This fixture now includes a retry mechanism for the PostgreSQL connection
+    to handle database startup delays in containerized environments.**
     """
-    import os
-    from sqlalchemy import create_engine
-    from fastapi.testclient import TestClient
-
     from api.main import create_app
-    from api.database import metadata as pg_metadata, graph_db_manager, get_graph_db_driver
+    from api.database import metadata as pg_metadata, get_graph_db_driver
 
-    DATABASE_URL_FOR_TESTS = os.getenv("DATABASE_URL")
-    if not DATABASE_URL_FOR_TESTS:
-        raise RuntimeError("DATABASE_URL not set for tests by pytest_configure.")
+    DATABASE_URL = os.getenv("DATABASE_URL")
+    if not DATABASE_URL:
+        raise RuntimeError("DATABASE_URL not set for tests.")
 
-    test_setup_pg_engine = create_engine(DATABASE_URL_FOR_TESTS)
-
-    pg_metadata.create_all(test_setup_pg_engine, checkfirst=True)
-    with test_setup_pg_engine.connect() as connection:
-        pg_tx = connection.begin()
+    # --- Resilient PostgreSQL Connection and Setup ---
+    engine = create_engine(DATABASE_URL)
+    max_retries = 10
+    wait_seconds = 1
+    for i in range(max_retries):
         try:
-            accomplishments_table = pg_metadata.tables.get("accomplishments")
-            if accomplishments_table is not None:
-                connection.execute(accomplishments_table.delete())
-            users_table = pg_metadata.tables.get("users")
-            if users_table is not None:
-                connection.execute(users_table.delete())
-            pg_tx.commit()
-        except Exception as e:
-            pg_tx.rollback()
-            raise e
-        finally:
-            connection.close()
+            # The first connection attempt happens here.
+            with engine.connect() as connection:
+                # Ensure tables exist before trying to delete from them
+                pg_metadata.create_all(bind=engine, checkfirst=True)
+                # Begin a transaction for cleanup
+                with connection.begin():
+                    # Iterate over tables in reverse order of creation for safe deletion
+                    for table in reversed(pg_metadata.sorted_tables):
+                         connection.execute(table.delete())
+            print(f"✅ PostgreSQL connection successful and tables cleaned after {i + 1} attempts.")
+            break
+        except OperationalError as e:
+            if "Connection refused" in str(e) and i < max_retries - 1:
+                print(f"PostgreSQL connection refused. Retrying in {wait_seconds}s... ({i+1}/{max_retries})")
+                time.sleep(wait_seconds)
+            else:
+                # If it's not a "Connection refused" error, or if max_retries is reached, re-raise.
+                raise RuntimeError(f"Could not connect to PostgreSQL after {i+1} attempts or other OperationalError occurred.") from e
+        except Exception as e: # Catch other potential exceptions during cleanup
+            print(f"An unexpected error occurred during PostgreSQL cleanup: {e}")
+            # Depending on the severity, you might want to re-raise or handle differently
+            raise
 
-    if graph_db_manager.driver is not None:
-        graph_db_manager.close()
+    # --- Neo4j Cleanup ---
+    # Assuming get_graph_db_driver() correctly returns a Neo4j driver instance
+    # and handles its own connection pooling/management.
+    neo4j_driver = get_graph_db_driver()
+    try:
+        with neo4j_driver.session() as session:
+            session.run("MATCH (n) DETACH DELETE n")
+        print("✅ Neo4j cleanup successful.")
+    except Exception as e:
+        print(f"An error occurred during Neo4j cleanup: {e}")
+        # Depending on the severity, you might want to re-raise or handle
+        raise
 
-    neo4j_driver_for_cleanup = get_graph_db_driver()
-    with neo4j_driver_for_cleanup.session() as session:
-        neo_tx = None
-        try:
-            neo_tx = session.begin_transaction()
-            neo_tx.run("MATCH (n) DETACH DELETE n")
-            neo_tx.commit()
-        except Exception as e:
-            if neo_tx:
-                neo_tx.rollback()
-            raise e
 
+    # --- App and Client Creation ---
     app_instance = create_app()
     yield TestClient(app_instance)
