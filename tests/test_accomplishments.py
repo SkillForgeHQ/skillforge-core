@@ -222,7 +222,7 @@ def test_process_accomplishment_for_non_existent_user(clean_db_client):
 
     # 1. Patch the entire `skill_extractor_chain` object, not a method on it.
     with patch("api.routers.accomplishments.skill_extractor_chain", new_callable=MagicMock) as mock_skill_extractor_chain, \
-         patch("api.routers.accomplishments.find_skill_match", new_callable=AsyncMock, return_value=SkillMatch(is_duplicate=False)), \
+         patch("api.routers.accomplishments.find_skill_match", new_callable=AsyncMock, return_value=SkillMatch(is_duplicate=False, existing_skill_name=None)), \
          patch("api.graph_crud.user_exists") as mock_user_exists_crud:
 
         # 2. Configure the `.ainvoke()` method on the new mock object.
