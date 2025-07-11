@@ -2,9 +2,12 @@ import pytest
 import uuid
 from fastapi.testclient import TestClient
 from jose import jwt
-# Removed: from api.main import app
 
-# client = TestClient(app) # Use a fresh client for this test to avoid state issues
+# Imports required by the new test function
+from unittest import mock # Make sure this is imported
+from api.routers.auth import get_current_user # Corrected path
+from api.schemas import User
+# ... other existing imports ...
 
 
 def test_issue_vc_for_accomplishment(monkeypatch, test_keys, clean_db_client):
@@ -150,14 +153,9 @@ def test_process_accomplishment_with_quest_id(monkeypatch, clean_db_client, test
     auth_headers = {"Authorization": f"Bearer {access_token}"}
 
     # 2. Create a Quest
-    # No need to mock graph_db_session for quests if it uses the main DB normally
-    # and the clean_db_client fixture ensures the DB is ready.
-    # If quest creation is simple and doesn't involve complex graph operations that need mocking for this test,
-    # we can let it hit the test graph DB.
     quest_create_payload = {"name": "My Test Quest", "description": "Quest for testing accomplishments."}
-    # Assuming quest creation doesn't require special auth for this test flow, or uses the same user token
-    quest_response = client.post("/quests/", json=quest_create_payload, headers=auth_headers) # Added auth if needed
-    assert quest_response.status_code == 200, quest_response.text # FastAPI default is 200 for POST if not specified
+    quest_response = client.post("/quests/", json=quest_create_payload, headers=auth_headers)
+    assert quest_response.status_code == 200, quest_response.text
     created_quest = quest_response.json()
     quest_id = created_quest["id"]
 
@@ -170,20 +168,12 @@ def test_process_accomplishment_with_quest_id(monkeypatch, clean_db_client, test
     }
 
     with patch("api.graph_crud.create_accomplishment") as mock_create_accomplishment_crud:
-        # Mock return value for graph_crud.create_accomplishment
-        # This node should represent what's stored and then used to build the response.
-        # It should align with the Accomplishment schema for response validation.
-        # Note: user_email and quest_id are not part of the node properties in the graph typically,
-        # but are used for creating relationships or are part of the response model.
-        # The mock here should return what the `AccomplishmentSchema.model_validate` would expect.
         mock_returned_node_data = {
-            "id": uuid.uuid4(), # Simulate DB-generated ID
+            "id": uuid.uuid4(),
             "name": accomplishment_payload["name"],
             "description": accomplishment_payload["description"],
-            "proof_url": None, # Assuming no proof_url sent
-            "timestamp": "2023-01-01T12:00:00Z", # Simulate DB-generated timestamp
-            # user_email is not stored on the node but added to response from current_user
-            # quest_id is not stored on the node but used for relationship
+            "proof_url": None,
+            "timestamp": "2023-01-01T12:00:00Z",
         }
         mock_create_accomplishment_crud.return_value = mock_returned_node_data
 
@@ -202,87 +192,61 @@ def test_process_accomplishment_with_quest_id(monkeypatch, clean_db_client, test
         assert args[1].email == user_email
 
         # Verify quest_id is passed as a kwarg.
-        # The quest_id in the payload is a string, Pydantic converts it to UUID for the AccomplishmentCreate model.
-        # This UUID is then passed to the CRUD function.
         assert isinstance(kwargs.get("quest_id"), uuid.UUID)
         assert str(kwargs.get("quest_id")) == quest_id
 
-
         # Verify the accomplishment data is passed correctly.
-        # args[2] is the accomplishment data dictionary. This comes from accomplishment_data.model_dump(exclude_unset=True)
-        # after quest_id has been popped. It should not contain user_email as that was removed from AccomplishmentCreate.
+        # args[2] is the accomplishment data dictionary.
         assert args[2]["name"] == accomplishment_payload["name"]
         assert args[2]["description"] == accomplishment_payload["description"]
-        assert "user_email" not in args[2] # Explicitly check user_email is NOT in the payload dict
-        assert "quest_id" not in args[2] # Explicitly check quest_id is NOT in the payload dict (passed separately)
+        assert "user_email" not in args[2]
+        assert "quest_id" not in args[2]
 
 
-# Make sure to import your app and the dependency you want to override
-from api.main import app
-# Assuming api.routers.auth is the location of get_current_user based on typical project structure
-# If this path is incorrect, the test will fail, and we can adjust it.
-from api.routers.auth import get_current_user
-from api.schemas import User # User schema for the mock
-
-def test_process_accomplishment_for_non_existent_user(clean_db_client): # Removed monkeypatch
+def test_process_accomplishment_for_non_existent_user(clean_db_client):
     """
     Tests that a 404 is returned when processing an accomplishment
     for a user that does not exist in the database.
     """
-    client = clean_db_client # client from fixture (provides TestClient with its own app instance)
+    client = clean_db_client
     non_existent_user_email = "ghost@example.com"
 
-    # Define the mock function that will replace the real dependency
+    # Mock the authenticated user for this request
     def mock_get_current_user_for_ghost():
-        # Ensure the mock User object matches the fields expected by the application.
-        # User ID is an int, is_active is a bool.
-        return User(id=9999, email=non_existent_user_email, is_active=True) # Removed name as it's not in User schema
+        return User(id=9999, email=non_existent_user_email, is_active=True)
 
-    # Apply the override to the app instance used by the TestClient from the fixture
     client.app.dependency_overrides[get_current_user] = mock_get_current_user_for_ghost
 
-    # Mock AI services as they might be called if auth passes
-    # This part can remain if these services are indeed called before the user_exists check.
-    # If user_exists is the very first check after auth, these might not be strictly necessary
-    # for this specific test's failure condition, but keeping them doesn't hurt.
-    from unittest.mock import AsyncMock, MagicMock, patch # Added patch
-    from api.ai.schemas import ExtractedSkills, SkillLevel, SkillMatch
+    from unittest.mock import AsyncMock, MagicMock, patch
+    from api.ai.schemas import ExtractedSkills, SkillMatch
 
-    # For this test, we primarily care that the user_exists check fails.
-    # We can simplify AI mocks if they are not crucial for reaching that check.
-    # Let's assume they are needed and keep them minimal.
-    with patch("api.routers.accomplishments.skill_extractor_chain.ainvoke", new_callable=AsyncMock, return_value=ExtractedSkills(skills=[])) as mock_skill_extract, \
-         patch("api.routers.accomplishments.find_skill_match", new_callable=AsyncMock, return_value=SkillMatch(is_duplicate=False)) as mock_skill_match, \
-         patch("api.graph_crud.user_exists") as mock_user_exists_crud: # Patch user_exists directly
+    # 1. Patch the entire `skill_extractor_chain` object, not a method on it.
+    with patch("api.routers.accomplishments.skill_extractor_chain", new_callable=MagicMock) as mock_skill_extractor_chain, \
+         patch("api.routers.accomplishments.find_skill_match", new_callable=AsyncMock, return_value=SkillMatch(is_duplicate=False)), \
+         patch("api.graph_crud.user_exists") as mock_user_exists_crud:
 
-        # Configure the mock_user_exists_crud to return False for the ghost user
-        def side_effect_user_exists(tx, email_to_check): # tx is the first arg for graph_crud.user_exists
-            if email_to_check == non_existent_user_email:
-                return False
-            return True # Default to True for other users if any were created
-        mock_user_exists_crud.side_effect = side_effect_user_exists
+        # 2. Configure the `.ainvoke()` method on the new mock object.
+        mock_skill_extractor_chain.ainvoke = AsyncMock(return_value=ExtractedSkills(skills=[]))
+
+        # 3. Mock the database check to return False, simulating a non-existent user.
+        mock_user_exists_crud.return_value = False
 
         accomplishment_payload = {
-            # "user_email": non_existent_user_email, # Removed as it's not part of the schema anymore
-            "name": "Accomplishment for Ghost",
-            "description": "This should fail with a 404.",
+            "name": "Task for Ghost",
+            "description": "This should fail because the user does not exist."
         }
 
-        response = client.post("/accomplishments/process", json=accomplishment_payload) # Auth headers are implicitly handled by mock_get_current_user
+        # 4. Make the request and assert the expected outcome.
+        response = client.post(
+            "/accomplishments/process",
+            json=accomplishment_payload,
+            headers={"Authorization": "Bearer fake-token-for-ghost"} # Token is for auth, user identity from mock_get_current_user
+        )
 
-        # Clean up the override so it doesn't affect other tests
-        # app.dependency_overrides.clear() # This is tricky with TestClient from fixture, usually handled by fixture scope
-        # The clean_db_client fixture should provide a fresh app or handle overrides correctly.
-        # For now, let's assume the fixture handles override cleanup or test isolation.
-        # If using pytest's monkeypatch fixture, it handles cleanup automatically.
-        # Direct app.dependency_overrides might persist if not cleaned.
-        # A better way is to use `with client.app.dependency_overrides(get_current_user=mock_get_current_user_for_ghost):`
+        assert response.status_code == 404, response.text
+        # The user message was updated in a previous commit to "User not found."
+        assert response.json()["detail"] == "User not found."
+        mock_user_exists_crud.assert_called_once_with(mock.ANY, non_existent_user_email)
 
-    assert response.status_code == 404
-    assert "not found" in response.json()["detail"].lower()
-    assert non_existent_user_email in response.json()["detail"]
-
-    # Explicitly clear overrides if the fixture doesn't handle it, to be safe for subsequent tests.
-    # This is important if `app` is a shared instance across tests.
-    # However, `clean_db_client` typically creates a new TestClient with a fresh app for each test.
-    client.app.dependency_overrides.clear()
+    # Clean up the dependency override to not affect other tests
+    client.app.dependency_overrides = {}
