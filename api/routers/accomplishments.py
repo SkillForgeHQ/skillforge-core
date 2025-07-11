@@ -145,13 +145,16 @@ async def process_accomplishment(
             processed_skills=processed_skills_for_response,
         )
 
+    except HTTPException:
+        # Re-raise HTTPException instances directly so FastAPI can handle them
+        raise
     except Exception as e:
+        # Catch all other unexpected errors and return a 500
         import traceback
-
         traceback.print_exc()
         raise HTTPException(
             status_code=500,
-            detail=f"An error occurred during accomplishment processing: {str(e)}",
+            detail=f"An unexpected error occurred during accomplishment processing: {str(e)}",
         )
 
 
