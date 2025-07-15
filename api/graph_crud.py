@@ -168,6 +168,94 @@ def create_quest_and_link_to_user(tx, quest_data, user_email):
 
     return quest_node
 
+
+def create_goal_and_link_to_user(tx, goal_data: schemas.GoalCreate, user_email: str):
+    """
+    Creates a new Goal node, links it to the user, and returns the Goal node.
+    """
+    goal_id = str(uuid.uuid4())
+    query = """
+    MATCH (u:User {email: $user_email})
+    CREATE (g:Goal {
+        id: $id,
+        user_email: $user_email,
+        goal_text: $goal_text,
+        status: 'in-progress',
+        full_plan_json: $full_plan_json
+    })
+    CREATE (u)-[:HAS_GOAL]->(g)
+    RETURN g
+    """
+    result = tx.run(
+        query,
+        id=goal_id,
+        user_email=user_email,
+        goal_text=goal_data.goal_text,
+        full_plan_json=goal_data.full_plan_json
+    ).single()
+    return result['g']
+
+
+def advance_goal(tx, completed_quest_id: str, user_email: str):
+    """
+    Marks a quest as complete and creates the next quest in the goal's plan.
+    If no more quests are in the plan, the goal is marked as completed.
+    """
+    # Find the goal associated with the completed quest
+    find_goal_query = """
+    MATCH (u:User {email: $user_email})-[:HAS_QUEST]->(q:Quest {id: $quest_id})
+    MATCH (u)-[:HAS_GOAL]->(g:Goal)-[]->(q)
+    RETURN g
+    """
+    goal_result = tx.run(find_goal_query, user_email=user_email, quest_id=completed_quest_id).single()
+    if not goal_result:
+        return None  # Or raise an exception
+
+    goal_node = goal_result['g']
+    import json
+    plan = json.loads(goal_node['full_plan_json'])
+
+    # Find the index of the completed quest
+    completed_quest_index = -1
+    for i, task in enumerate(plan):
+        # This assumes the quest ID is stored in the plan. If not, need another way to identify.
+        # For now, let's assume we match by name, which is fragile.
+        # A better approach would be to store quest IDs in the plan as they are created.
+        # Let's search by quest name for now.
+        # To do this, we need the completed quest's name.
+        get_quest_name_query = "MATCH (q:Quest {id: $quest_id}) RETURN q.name AS name"
+        completed_quest_name = tx.run(get_quest_name_query, quest_id=completed_quest_id).single()['name']
+
+        if task['title'] == completed_quest_name:
+            completed_quest_index = i
+            break
+
+    if completed_quest_index == -1:
+        return None # Quest not in plan
+
+    # Determine the next quest
+    if completed_quest_index + 1 < len(plan):
+        next_task_data = plan[completed_quest_index + 1]
+
+        # Create and link the next quest
+        new_quest_data = {"name": next_task_data['title'], "description": next_task_data['description']}
+        new_quest_node = create_quest_and_link_to_user(tx, new_quest_data, user_email)
+
+        # Link new quest to the goal
+        link_quest_to_goal_query = """
+        MATCH (g:Goal {id: $goal_id})
+        MATCH (q:Quest {id: $quest_id})
+        CREATE (g)-[:NEXT_STEP]->(q)
+        """
+        tx.run(link_quest_to_goal_query, goal_id=goal_node['id'], quest_id=new_quest_node['id'])
+        return new_quest_node
+    else:
+        # No more quests, mark goal as completed
+        complete_goal_query = "MATCH (g:Goal {id: $goal_id}) SET g.status = 'completed' RETURN g"
+        tx.run(complete_goal_query, goal_id=goal_node['id'])
+        return None
+
+
 # ---- Accomplishment CRUD Operations ----
 def create_accomplishment(tx, user: schemas.User, accomplishment_data, quest_id: str = None):
     """
