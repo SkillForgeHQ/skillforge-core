@@ -76,6 +76,22 @@ class Quest(QuestBase):
     model_config = {"from_attributes": True}
 
 
+# ---- Goal Schemas ----
+class GoalBase(BaseModel):
+    goal_text: str
+    status: str = "in-progress"
+
+class GoalCreate(GoalBase):
+    full_plan_json: str
+
+class Goal(GoalBase):
+    id: uuid.UUID
+    user_email: str
+    full_plan_json: str
+
+    model_config = {"from_attributes": True}
+
+
 class AccomplishmentCreate(BaseModel):
     name: str
     description: str

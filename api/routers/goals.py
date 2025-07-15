@@ -22,41 +22,60 @@ class GoalRequest(BaseModel):
     goal: str
 
 
-@router.post("/goals/parse", response_model=List[schemas.Quest], tags=["AI"]) # Changed response_model
+@router.post("/goals/parse", response_model=schemas.Quest, tags=["AI"])
 async def parse_goal_into_subtasks(
     request: GoalRequest,
-    db: Neo4jSession = Depends(get_graph_db_session), # Added db session dependency
+    db: Neo4jSession = Depends(get_graph_db_session),
     current_user: User = Depends(get_current_user)
 ):
     """
-    Accepts a high-level goal, uses an LLM to break it down into
-    a structured list of sub-tasks, creates a Quest node for each sub-task,
-    and returns the list of created Quests.
+    Accepts a high-level goal, breaks it down into sub-tasks, creates a :Goal node
+    with the full plan, and creates the first sub-task as a :Quest node.
     """
     try:
-        # Invoke the LangChain chain with the user's goal
-        # parsed_result will be of type ParsedGoal
         parsed_result: ParsedGoal = await goal_parser_chain.ainvoke({"goal": request.goal})
 
-        created_quests: List[schemas.Quest] = []
-        if parsed_result and parsed_result.sub_tasks:
-            for sub_task in parsed_result.sub_tasks:
-                quest_data = {
-                    "name": sub_task.title, # Using title from SubTask
-                    "description": sub_task.description # Using description from SubTask
-                }
-                # Create a Quest node in the graph for each sub-task
-                # and link it to the current user.
-                # graph_crud.create_quest_and_link_to_user will be implemented next
-                # and is expected to return a Neo4j Node object.
-                new_quest_node = db.write_transaction(
-                    graph_crud.create_quest_and_link_to_user, quest_data, current_user.email
-                )
-                # FastAPI will automatically convert the Node to schemas.Quest
-                # due to model_config = {"from_attributes": True} in schemas.Quest
-                created_quests.append(new_quest_node)
+        if not parsed_result or not parsed_result.sub_tasks:
+            raise HTTPException(status_code=400, detail="Could not parse the goal into sub-tasks.")
 
-        return created_quests
+        import json
+        full_plan_json = json.dumps([sub_task.dict() for sub_task in parsed_result.sub_tasks])
+
+        goal_data = schemas.GoalCreate(
+            goal_text=request.goal,
+            full_plan_json=full_plan_json
+        )
+
+        # This transaction creates the goal and the first quest
+        def create_goal_and_first_quest(tx, goal_data, user_email):
+            # Create the Goal node
+            goal_node = graph_crud.create_goal_and_link_to_user(tx, goal_data, user_email)
+
+            # Create the first Quest from the plan
+            first_sub_task = parsed_result.sub_tasks[0]
+            quest_data = {
+                "name": first_sub_task.title,
+                "description": first_sub_task.description
+            }
+            first_quest_node = graph_crud.create_quest_and_link_to_user(tx, quest_data, user_email)
+
+            # Link Goal to the first Quest
+            link_query = """
+            MATCH (g:Goal {id: $goal_id})
+            MATCH (q:Quest {id: $quest_id})
+            CREATE (g)-[:FIRST_STEP]->(q)
+            """
+            tx.run(link_query, goal_id=goal_node['id'], quest_id=first_quest_node['id'])
+
+            return first_quest_node
+
+        # Execute the transaction
+        first_quest = db.write_transaction(
+            create_goal_and_first_quest,
+            goal_data,
+            current_user.email
+        )
+
+        return first_quest
     except Exception as e:
-        # Handle potential parsing errors or API failures
-        raise HTTPException(status_code=500, detail=f"Failed to parse goal and create quests: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to process goal: {str(e)}")
