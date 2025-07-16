@@ -203,6 +203,76 @@ def test_process_accomplishment_with_quest_id(monkeypatch, clean_db_client, test
         assert "quest_id" not in args[2]
 
 
+def test_process_accomplishment_advances_goal(monkeypatch, clean_db_client, test_keys):
+    client = clean_db_client
+    # ... [Copy mocks from previous tests] ...
+    original_open = open
+
+    def mock_open(file, *args, **kwargs):
+        if file == "private_key.json":
+            return original_open(test_keys["private_key_path"], *args, **kwargs)
+        return original_open(file, *args, **kwargs)
+
+    monkeypatch.setattr("builtins.open", mock_open)
+
+    from unittest.mock import AsyncMock, MagicMock, patch
+    from api.ai.schemas import ExtractedSkills, SkillLevel, SkillMatch
+
+    # Mock AI services
+    mock_chain_instance = MagicMock()
+    mock_extracted_skills_response = ExtractedSkills(skills=[SkillLevel(skill="Testing", level="Advanced")])
+    mock_chain_instance.ainvoke = AsyncMock(return_value=mock_extracted_skills_response)
+    monkeypatch.setattr("api.routers.accomplishments.skill_extractor_chain", mock_chain_instance)
+
+    async def mock_find_skill_match(candidate_skill_name, existing_skill_names):
+        return SkillMatch(is_duplicate=False, existing_skill_name=None)
+    monkeypatch.setattr("api.routers.accomplishments.find_skill_match", mock_find_skill_match)
+
+
+    # 1. Create User
+    unique_id = uuid.uuid4().hex[:8]
+    user_email = f"test.goal.advancement.{unique_id}@skillforge.io"
+    user_password = "securepassword"
+    client.post("/users/", json={"email": user_email, "name": "Goal Advancement User", "password": user_password})
+    token_response = client.post("/token", data={"username": user_email, "password": user_password})
+    auth_headers = {"Authorization": f"Bearer {token_response.json()['access_token']}"}
+
+    # 2. Create Goal with a plan
+    goal_plan = {
+        "title": "Learn FastAPI",
+        "steps": [
+            {"title": "Step 1: Read the docs", "description": "Read the official FastAPI documentation."},
+            {"title": "Step 2: Build a simple API", "description": "Create a hello world API."},
+        ]
+    }
+    goal_payload = {"goal_text": "Learn FastAPI", "full_plan_json": str(goal_plan)}
+    # This part needs an endpoint to create a goal and get back the first quest
+    # For now, let's assume the first quest is created and we have its ID
+    # In a real scenario, the /goals/parse endpoint would be called
+    # Let's manually create the first quest for the test
+    quest_create_payload = {"name": "Step 1: Read the docs", "description": "Read the official FastAPI documentation."}
+    quest_response = client.post("/quests/", json=quest_create_payload, headers=auth_headers)
+    first_quest_id = quest_response.json()["id"]
+
+    # 3. Process accomplishment for the first quest
+    accomplishment_payload = {
+        "name": "Finished reading the docs",
+        "description": "I have read all the FastAPI docs.",
+        "quest_id": first_quest_id
+    }
+
+    # 4. Patch `advance_goal` to verify it's called
+    with patch("api.graph_crud.advance_goal") as mock_advance_goal:
+        response = client.post("/accomplishments/process", json=accomplishment_payload, headers=auth_headers)
+        assert response.status_code == 200
+
+        # Verify that advance_goal was called with the correct quest_id and user_email
+        mock_advance_goal.assert_called_once()
+        call_args = mock_advance_goal.call_args[0]
+        assert call_args[1] == first_quest_id
+        assert call_args[2] == user_email
+
+
 def test_process_accomplishment_for_non_existent_user(clean_db_client):
     """
     Tests that a 404 is returned when processing an accomplishment

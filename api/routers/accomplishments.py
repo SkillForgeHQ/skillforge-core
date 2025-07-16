@@ -139,6 +139,15 @@ async def process_accomplishment(
                     skill_name_to_link,
                 )
 
+        # Step 7: If the accomplishment is for a quest, advance the goal
+        if created_accomplishment.quest_id:
+            with driver.session() as session:
+                session.write_transaction(
+                    graph_crud.advance_goal,
+                    str(created_accomplishment.quest_id),
+                    current_user.email,
+                )
+
         return AccomplishmentResponse(
             message=f"Successfully processed accomplishment, created node '{created_accomplishment.name}', and linked {len(final_skill_names_to_link)} skills.",
             accomplishment=created_accomplishment,

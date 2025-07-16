@@ -127,6 +127,70 @@ def test_create_accomplishment_without_quest(mock_tx, mocker): # Added mocker
     assert result["id"] == expected_accomplishment_id
     assert result["name"] == accomplishment_data["name"]
 
+
+# Test for advance_goal
+def test_advance_goal(mock_tx, mocker):
+    user_email = "goal.user@example.com"
+    completed_quest_id = str(uuid.uuid4())
+    goal_id = str(uuid.uuid4())
+    next_quest_id = str(uuid.uuid4())
+
+    # 1. Mock the plan
+    plan = [
+        {"title": "First Step", "description": "Do this first."},
+        {"title": "Second Step", "description": "Do this second."},
+    ]
+    import json
+    plan_json = json.dumps(plan)
+
+    # 2. Mock the goal node found by the first query in advance_goal
+    mock_goal_node = {
+        "id": goal_id,
+        "full_plan_json": plan_json,
+    }
+    # We need to mock the quest name lookup as well
+    mock_completed_quest_name = "First Step"
+
+    # 3. Mock the creation of the next quest
+    mock_next_quest_node = {
+        "id": next_quest_id,
+        "name": "Second Step",
+        "description": "Do this second.",
+    }
+
+    # Configure the side_effect for multiple tx.run calls
+    mock_tx.run.side_effect = [
+        # First call: find_goal_query
+        mocker.Mock(single=mocker.Mock(return_value={'g': mock_goal_node})),
+        # Second call: get_quest_name_query
+        mocker.Mock(single=mocker.Mock(return_value={'name': mock_completed_quest_name})),
+        # Third call (inside create_quest_and_link_to_user): CREATE (q:Quest)
+        mocker.Mock(single=mocker.Mock(return_value={'q': mock_next_quest_node})),
+        # Fourth call (inside create_quest_and_link_to_user): MERGE (u)-[:HAS_QUEST]->(q)
+        mocker.Mock(),
+        # Fifth call: link_quest_to_goal_query
+        mocker.Mock(),
+    ]
+
+    # Mock the create_quest_and_link_to_user function to control the new quest's ID
+    mocker.patch('api.graph_crud.create_quest_and_link_to_user',
+                 return_value=mock_next_quest_node)
+
+
+    from api.graph_crud import advance_goal
+    result_quest = advance_goal(mock_tx, completed_quest_id, user_email)
+
+    assert result_quest is not None
+    assert result_quest['name'] == "Second Step"
+
+    # Verify that create_quest_and_link_to_user was called with the correct data
+    from api.graph_crud import create_quest_and_link_to_user
+    create_quest_and_link_to_user.assert_called_once_with(
+        mock_tx,
+        {"name": "Second Step", "description": "Do this second."},
+        user_email
+    )
+
 def test_create_accomplishment_with_quest(mock_tx, mocker): # Added mocker
     user_email = "test@example.com"
     # Create a mock User object that has an 'email' attribute
