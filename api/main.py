@@ -4,54 +4,52 @@ import os
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-from sqlalchemy import create_engine
-from .routers import skills, users, auth, goals, qa, accomplishments, quests # Added quests
-import api.database # To access and re-assign api.database.engine
+from .routers import users, auth, goals, accomplishments, quests, skills, qa  # All routers imported
+from .database import create_db_and_tables, close_db_driver  # For startup/shutdown
+
 
 def create_app():
-    # Initialize the database engine here, ensuring it uses the
-    # environment variables set by pytest_configure for tests.
-    DATABASE_URL = os.getenv("DATABASE_URL")
-    if not DATABASE_URL:
-        raise RuntimeError("DATABASE_URL environment variable not set at app creation time.")
-
-    # Re-assign the engine in the database module.
-    # This allows existing parts of the app (like get_db) to use the new engine.
-    api.database.engine = create_engine(DATABASE_URL)
-
-    # Also, re-initialize Neo4j connection manager if it depends on env vars at init
-    # graph_db_manager.connect() could be called here if it wasn't lazy.
-    # For langchain_graph, if it's not mock, it also initializes using os.getenv at import.
-    # This might need more careful handling if pytest_configure doesn't run early enough for these.
-    # However, Neo4j connections are typically lazy or re-established.
-
     app = FastAPI(
         title="SkillForge API",
         description="The core API for the SkillForge engine.",
-        version="0.1.0",
+        version="0.3.0",  # Let's version up!
     )
 
-    app.include_router(skills.router, prefix="/skills")
-    app.include_router(users.router)
-    app.include_router(auth.router)
-    app.include_router(goals.router)
-    app.include_router(qa.router)
-    app.include_router(accomplishments.router)
-    app.include_router(quests.router) # Added quests router
+    # --- Event Handlers ---
+    # Use event handlers for clean startup and shutdown logic
+    @app.on_event("startup")
+    def on_startup():
+        # This is the ideal place for initialization logic
+        create_db_and_tables()
 
-    # Mount the frontend directory to serve static files
-    app.mount("/", StaticFiles(directory="frontend"), name="frontend")
+    @app.on_event("shutdown")
+    def on_shutdown():
+        # Cleanly close database connections
+        close_db_driver()
 
-    @app.get("/", tags=["Root"])
-    async def read_root():
-        return FileResponse('frontend/index.html')
+    # --- API Routers ---
+    # Include all your API endpoints with their prefixes
+    app.include_router(users.router, prefix="/users", tags=["Users"])
+    app.include_router(auth.router, prefix="/token", tags=["Authentication"])
+    app.include_router(goals.router, prefix="/goals", tags=["Goals"])
+    app.include_router(quests.router, prefix="/quests", tags=["Quests"])
+    app.include_router(accomplishments.router, prefix="/accomplishments", tags=["Accomplishments"])
+    app.include_router(skills.router, prefix="/skills", tags=["Skills"])
+    app.include_router(qa.router, prefix="/qa", tags=["Q&A"])
+
+    # --- Homepage and Static Files ---
+    # Define the specific homepage route FIRST.
+    @app.get("/", response_class=FileResponse, include_in_schema=False)
+    async def read_index():
+        # Ensure the path is correct relative to where the app runs
+        return "frontend/index.html"
+
+    # Mount the static directory AFTER all other routes.
+    # This will handle requests for /script.js, /styles.css, etc.
+    app.mount("/static", StaticFiles(directory="frontend"), name="static")
 
     return app
 
-# If you want to run this with uvicorn directly (e.g. uvicorn api.main:app),
-# you might still want a default app instance for that convenience,
-# created by the factory.
-# For testing, the factory will be called by the test fixture.
-# For production, uvicorn can be told to use the factory: uvicorn api.main:create_app --factory
-# If a global 'app' is needed for some deployment scripts not using --factory:
+
+# Create the main app instance using the factory
 app = create_app()
