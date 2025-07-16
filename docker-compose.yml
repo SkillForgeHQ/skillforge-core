@@ -6,7 +6,9 @@ services:
     ports:
       - "8000:8000"
     environment:
-      DATABASE_URL: ${DATABASE_URL}
+      # --- THIS IS THE FIX ---
+      # Use variables to ensure credentials match the postgres service
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       NEO4J_URI: ${NEO4J_URI}
       NEO4J_USERNAME: ${NEO4J_USERNAME}
       NEO4J_PASSWORD: ${NEO4J_PASSWORD}
@@ -15,6 +17,7 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY}
     volumes:
       - ./api:/app/api
+      - ./frontend:/app/frontend
       - ./init_db.py:/app/init_db.py
     command: >
       bash -c "python init_db.py && 
