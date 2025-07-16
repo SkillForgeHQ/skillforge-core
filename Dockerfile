@@ -18,6 +18,7 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 
 # Copy the application code
 COPY ./api /app/api
+COPY ./frontend /app/frontend
 COPY ./init_db.py .
 
 # Copy and set up the new entrypoint script
