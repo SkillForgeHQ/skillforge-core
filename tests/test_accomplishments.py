@@ -62,7 +62,7 @@ def test_issue_vc_for_accomplishment(monkeypatch, test_keys, clean_db_client):
     user_email = f"test.vc.user.{unique_id}@skillforge.io"
     user_password = "asecurepassword" # Store password for login
     user_payload = {"email": user_email, "name": "VC Test User", "password": user_password}
-    response = clean_db_client.post("/users/", json=user_payload)
+    user_response = clean_db_client.post("/users/", json=user_payload)
     assert user_response.status_code == 201, f"User creation failed or returned unexpected status: {user_response.text}"
     # created_user_data = user_response.json() # User data if needed, like ID
 
