@@ -14,6 +14,7 @@ bcrypt==4.0.1
 python-jose[cryptography]
 python-dotenv
 jwcrypto
+jwcrypto
 
 # AI and LangChain
 langchain

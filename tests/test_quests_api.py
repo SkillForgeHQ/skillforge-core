@@ -44,6 +44,8 @@ def test_create_quest_endpoint(mock_graph_db_session_for_quests, mocker):
     # If your endpoint uses a Pydantic model for request that's different from QuestSchema (e.g. QuestCreate)
     # ensure quest_create_data matches that. Here, we assume QuestCreate has name and description.
 
+    from api.main import app as main_app
+    client = TestClient(main_app)
     response = client.post("/quests/", json=quest_create_data)
 
     assert response.status_code == 200

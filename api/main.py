@@ -3,7 +3,8 @@
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-from . import database, models
+from . import database
+from skill_system import models
 from .routers import users, auth, goals, accomplishments, quests, skills, qa
 
 
@@ -18,12 +19,13 @@ def create_app():
     @app.on_event("startup")
     def on_startup():
         # This is the ideal place for initialization logic
-        database.create_db_and_tables()
+        import runpy
+        runpy.run_path('init_db.py')
 
     @app.on_event("shutdown")
     def on_shutdown():
         # Cleanly close database connections
-        database.close_db_driver()
+        database.graph_db_manager.close()
 
     # --- API Routers ---
     # Include all your API endpoints. Let's add prefixes for clarity.
@@ -37,13 +39,8 @@ def create_app():
 
     # --- Homepage and Static Files ---
 
-    # 1. Define the specific homepage route FIRST.
-    @app.get("/", response_class=FileResponse, include_in_schema=False)
-    async def read_index():
-        return "frontend/index.html"
-
     # 2. Mount the static directory to handle JS, CSS, etc., AFTER other routes.
-    app.mount("/static", StaticFiles(directory="frontend"), name="static")
+    app.mount("/", StaticFiles(directory="frontend"), name="static")
 
     return app
 
