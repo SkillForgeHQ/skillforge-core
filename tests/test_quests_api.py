@@ -46,7 +46,7 @@ def test_create_quest_endpoint(mock_graph_db_session_for_quests, mocker):
 
     from api.main import app as main_app
     client = TestClient(main_app)
-    response = client.post("/quests/", json=quest_create_data)
+    response = TestClient(app).post("/quests/", json=quest_create_data)
 
     assert response.status_code == 200
     response_data = response.json()
@@ -76,7 +76,7 @@ def test_create_quest_endpoint_creation_fails(mock_graph_db_session_for_quests, 
 
     quest_create_data = {"name": "Fail Quest", "description": "This should fail."}
 
-    response = client.post("/quests/", json=quest_create_data)
+    response = TestClient(app).post("/quests/", json=quest_create_data)
 
     assert response.status_code == 400
     assert response.json() == {"detail": "Quest could not be created"}

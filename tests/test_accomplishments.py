@@ -62,13 +62,13 @@ def test_issue_vc_for_accomplishment(monkeypatch, test_keys, clean_db_client):
     user_email = f"test.vc.user.{unique_id}@skillforge.io"
     user_password = "asecurepassword" # Store password for login
     user_payload = {"email": user_email, "name": "VC Test User", "password": user_password}
-    user_response = client.post("/users/", json=user_payload)
+    response = clean_db_client.post("/users/", json=user_payload)
     assert user_response.status_code == 201, f"User creation failed or returned unexpected status: {user_response.text}"
     # created_user_data = user_response.json() # User data if needed, like ID
 
     # Log in the new user to get a token
     login_data = {"username": user_email, "password": user_password}
-    token_response = client.post("/token", data=login_data)
+    token_response = clean_db_client.post("/token", data=login_data)
     assert token_response.status_code == 200, f"Failed to get token: {token_response.text}"
     access_token = token_response.json()["access_token"]
     auth_headers = {"Authorization": f"Bearer {access_token}"}
@@ -80,7 +80,7 @@ def test_issue_vc_for_accomplishment(monkeypatch, test_keys, clean_db_client):
         # proof_url is optional
     }
     # Use the correct endpoint and auth headers
-    response = client.post(
+    response = clean_db_client.post(
         "/accomplishments/process", json=accomplishment_payload, headers=auth_headers
     )
     assert response.status_code == 200, f"Accomplishment processing failed: {response.text}"
@@ -143,18 +143,18 @@ def test_process_accomplishment_with_quest_id(monkeypatch, clean_db_client, test
     user_email = f"test.quest.user.{unique_id}@skillforge.io"
     user_password = "securepassword"
     user_payload = {"email": user_email, "name": "Quest Test User", "password": user_password}
-    user_response = client.post("/users/", json=user_payload)
+    user_response = clean_db_client.post("/users/", json=user_payload)
     assert user_response.status_code == 201, user_response.text
 
     # Log in to get token
     login_data = {"username": user_email, "password": user_password}
-    token_response = client.post("/token", data=login_data)
+    token_response = clean_db_client.post("/token", data=login_data)
     access_token = token_response.json()["access_token"]
     auth_headers = {"Authorization": f"Bearer {access_token}"}
 
     # 2. Create a Quest
     quest_create_payload = {"name": "My Test Quest", "description": "Quest for testing accomplishments."}
-    quest_response = client.post("/quests/", json=quest_create_payload, headers=auth_headers)
+    quest_response = clean_db_client.post("/quests/", json=quest_create_payload, headers=auth_headers)
     assert quest_response.status_code == 200, quest_response.text
     created_quest = quest_response.json()
     quest_id = created_quest["id"]
@@ -233,8 +233,9 @@ def test_process_accomplishment_advances_goal(monkeypatch, clean_db_client, test
     unique_id = uuid.uuid4().hex[:8]
     user_email = f"test.goal.advancement.{unique_id}@skillforge.io"
     user_password = "securepassword"
-    client.post("/users/", json={"email": user_email, "name": "Goal Advancement User", "password": user_password})
-    token_response = client.post("/token", data={"username": user_email, "password": user_password})
+    clean_db_client.post("/users/", json={"email": user_email, "name": "Goal Advancement User", "password": user_password})
+    token_response = clean_db_client.post("/token", data={"username": user_email, "password": user_password})
+    assert token_response.status_code == 200, f"Failed to get token: {token_response.text}"
     auth_headers = {"Authorization": f"Bearer {token_response.json()['access_token']}"}
 
     # 2. Create Goal with a plan
@@ -251,7 +252,7 @@ def test_process_accomplishment_advances_goal(monkeypatch, clean_db_client, test
     # In a real scenario, the /goals/parse endpoint would be called
     # Let's manually create the first quest for the test
     quest_create_payload = {"name": "Step 1: Read the docs", "description": "Read the official FastAPI documentation."}
-    quest_response = client.post("/quests/", json=quest_create_payload, headers=auth_headers)
+    quest_response = clean_db_client.post("/quests/", json=quest_create_payload, headers=auth_headers)
     first_quest_id = quest_response.json()["id"]
 
     # 3. Process accomplishment for the first quest
@@ -307,7 +308,7 @@ def test_process_accomplishment_for_non_existent_user(clean_db_client):
         }
 
         # 4. Make the request and assert the expected outcome.
-        response = client.post(
+        response = clean_db_client.post(
             "/accomplishments/process",
             json=accomplishment_payload,
             headers={"Authorization": "Bearer fake-token-for-ghost"} # Token is for auth, user identity from mock_get_current_user
