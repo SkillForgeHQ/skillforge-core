@@ -260,8 +260,20 @@ def advance_goal(tx, completed_quest_id: str, user_email: str):
         return new_quest_node
     else:
         # No more quests, mark goal as completed
-        complete_goal_query = "MATCH (g:Goal {id: $goal_id}) SET g.status = 'completed' RETURN g"
+        complete_goal_query = """
+        MATCH (g:Goal {id: $goal_id})
+        SET g.status = 'completed'
+        """
         tx.run(complete_goal_query, goal_id=goal_node['id'])
+
+        # Create ACHIEVED_GOAL relationship
+        achieve_goal_query = """
+        MATCH (u:User {email: $user_email})
+        MATCH (g:Goal {id: $goal_id})
+        MERGE (u)-[:ACHIEVED_GOAL]->(g)
+        """
+        tx.run(achieve_goal_query, user_email=user_email, goal_id=goal_node['id'])
+
         return None
 
 
