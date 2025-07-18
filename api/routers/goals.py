@@ -78,6 +78,7 @@ async def parse_goal_into_subtasks(
             """
             tx.run(link_query, goal_id=goal_node["id"], quest_id=first_quest_node["id"])
 
+
             # Mark quest as active for the user
             active_rel_query = """
             MATCH (u:User {email: $user_email})
@@ -90,9 +91,17 @@ async def parse_goal_into_subtasks(
 
             return goal_node, first_quest_node
 
-        # Execute the transaction
-        goal_node, first_quest = db.write_transaction(
+    # Execute the transaction
+    goal_node, first_quest = db.write_transaction(
+        create_goal_and_first_quest,
+        goal_data,
+        current_user.email
+    )
+
             create_goal_and_first_quest, goal_data, current_user.email
+            create_goal_and_first_quest,
+            goal_data,
+            current_user.email
         )
 
         goal_model = schemas.Goal.model_validate(dict(goal_node))
