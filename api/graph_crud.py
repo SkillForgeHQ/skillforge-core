@@ -248,6 +248,15 @@ def advance_goal(tx, completed_quest_id: str, user_email: str):
         CREATE (g)-[:NEXT_STEP]->(q)
         """
         tx.run(link_quest_to_goal_query, goal_id=goal_node['id'], quest_id=new_quest_node['id'])
+
+        # Create a PRECEDES relationship from the old quest to the new one
+        link_quests_query = """
+        MATCH (old_quest:Quest {id: $completed_quest_id})
+        MATCH (new_quest:Quest {id: $new_quest_id})
+        CREATE (old_quest)-[:PRECEDES]->(new_quest)
+        """
+        tx.run(link_quests_query, completed_quest_id=completed_quest_id, new_quest_id=new_quest_node['id'])
+
         return new_quest_node
     else:
         # No more quests, mark goal as completed
