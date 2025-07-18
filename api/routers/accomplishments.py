@@ -29,7 +29,6 @@ router = APIRouter()
 class AccomplishmentResponse(BaseModel):
     message: str
     accomplishment: AccomplishmentSchema
-    processed_skills: List[SkillLevel]
 
 
 @router.post(
@@ -90,7 +89,6 @@ async def process_accomplishment(
             return AccomplishmentResponse(
                 message="No skills were extracted from the accomplishment. Accomplishment created.",
                 accomplishment=created_accomplishment,
-                processed_skills=[],
             )
 
         # Step 3: Get all existing skill names from the database
@@ -151,7 +149,6 @@ async def process_accomplishment(
         return AccomplishmentResponse(
             message=f"Successfully processed accomplishment, created node '{created_accomplishment.name}', and linked {len(final_skill_names_to_link)} skills.",
             accomplishment=created_accomplishment,
-            processed_skills=processed_skills_for_response,
         )
 
     except HTTPException:
