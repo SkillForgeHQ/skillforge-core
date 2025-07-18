@@ -31,20 +31,31 @@ def create_app():
         version="0.1.0",
     )
 
+    # Include routers with their default prefixes (used by tests)
     app.include_router(skills.router, prefix="/skills")
     app.include_router(users.router)
     app.include_router(auth.router)
     app.include_router(goals.router)
     app.include_router(qa.router)
     app.include_router(accomplishments.router)
-    app.include_router(quests.router) # Added quests router
+    app.include_router(quests.router)  # Added quests router
+
+    # Also expose the same routes under /api for the frontend
+    api_prefix = "/api"
+    app.include_router(skills.router, prefix=f"{api_prefix}/skills")
+    app.include_router(users.router, prefix=api_prefix)
+    app.include_router(auth.router, prefix=api_prefix)
+    app.include_router(goals.router, prefix=api_prefix)
+    app.include_router(qa.router, prefix=api_prefix)
+    app.include_router(accomplishments.router, prefix=api_prefix)
+    app.include_router(quests.router, prefix=api_prefix)
 
     # Mount the frontend directory to serve static files
-    app.mount("/", StaticFiles(directory="frontend"), name="frontend")
+    app.mount("/static", StaticFiles(directory="frontend"), name="static")
 
-    @app.get("/", tags=["Root"])
+    @app.get("/", include_in_schema=False)
     async def read_root():
-        return FileResponse('frontend/index.html')
+        return FileResponse("frontend/index.html")
 
     return app
 
