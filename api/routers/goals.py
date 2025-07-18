@@ -22,7 +22,7 @@ class GoalRequest(BaseModel):
     goal: str
 
 
-@router.post("/goals/parse", response_model=schemas.Quest, tags=["AI"])
+@router.post("/goals/parse", response_model=schemas.GoalAndQuest, tags=["AI"])
 async def parse_goal_into_subtasks(
     request: GoalRequest,
     db: Neo4jSession = Depends(get_graph_db_session),
@@ -67,15 +67,18 @@ async def parse_goal_into_subtasks(
             """
             tx.run(link_query, goal_id=goal_node['id'], quest_id=first_quest_node['id'])
 
-            return first_quest_node
+            return goal_node, first_quest_node
 
         # Execute the transaction
-        first_quest = db.write_transaction(
+        goal_node, first_quest = db.write_transaction(
             create_goal_and_first_quest,
             goal_data,
             current_user.email
         )
 
-        return first_quest
+        goal_model = schemas.Goal.model_validate(dict(goal_node))
+        quest_model = schemas.Quest.model_validate(dict(first_quest))
+
+        return {"goal": goal_model, "quest": quest_model}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to process goal: {str(e)}")
