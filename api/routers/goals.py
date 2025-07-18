@@ -59,11 +59,11 @@ async def parse_goal_into_subtasks(
             }
             first_quest_node = graph_crud.create_quest_and_link_to_user(tx, quest_data, user_email)
 
-            # Link Goal to the first Quest
+            # Link Goal to the first Quest as the active quest
             link_query = """
             MATCH (g:Goal {id: $goal_id})
             MATCH (q:Quest {id: $quest_id})
-            CREATE (g)-[:FIRST_STEP]->(q)
+            CREATE (g)-[:HAS_ACTIVE_QUEST]->(q)
             """
             tx.run(link_query, goal_id=goal_node['id'], quest_id=first_quest_node['id'])
 

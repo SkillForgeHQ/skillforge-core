@@ -197,84 +197,74 @@ def create_goal_and_link_to_user(tx, goal_data: schemas.GoalCreate, user_email: 
 
 
 def advance_goal(tx, completed_quest_id: str, user_email: str):
-    """
-    Marks a quest as complete and creates the next quest in the goal's plan.
-    If no more quests are in the plan, the goal is marked as completed.
-    """
-    # Find the goal associated with the completed quest
-    find_goal_query = """
-    MATCH (u:User {email: $user_email})-[:HAS_QUEST]->(q:Quest {id: $quest_id})
-    MATCH (u)-[:HAS_GOAL]->(g:Goal)-[]->(q)
-    RETURN g
-    """
-    goal_result = tx.run(find_goal_query, user_email=user_email, quest_id=completed_quest_id).single()
-    if not goal_result:
-        return None  # Or raise an exception
-
-    goal_node = goal_result['g']
+    """Advance a goal's state machine after a quest is completed."""
     import json
-    plan = json.loads(goal_node['full_plan_json'])
 
-    # Find the index of the completed quest
-    completed_quest_index = -1
-    for i, task in enumerate(plan):
-        # This assumes the quest ID is stored in the plan. If not, need another way to identify.
-        # For now, let's assume we match by name, which is fragile.
-        # A better approach would be to store quest IDs in the plan as they are created.
-        # Let's search by quest name for now.
-        # To do this, we need the completed quest's name.
-        get_quest_name_query = "MATCH (q:Quest {id: $quest_id}) RETURN q.name AS name"
-        completed_quest_name = tx.run(get_quest_name_query, quest_id=completed_quest_id).single()['name']
+    # Locate the goal that currently has this quest as its active quest
+    find_query = """
+    MATCH (u:User {email: $user_email})-[:HAS_GOAL]->(g:Goal)-[r:HAS_ACTIVE_QUEST]->(q:Quest {id: $quest_id})
+    RETURN g, q
+    """
+    record = tx.run(find_query, user_email=user_email, quest_id=completed_quest_id).single()
+    if not record:
+        return None
 
-        if task['title'] == completed_quest_name:
-            completed_quest_index = i
-            break
+    goal_node = record["g"]
+    quest_node = record["q"]
 
-    if completed_quest_index == -1:
-        return None # Quest not in plan
+    # Remove the active quest relationship
+    delete_rel_query = """
+    MATCH (g:Goal {id: $goal_id})-[r:HAS_ACTIVE_QUEST]->(q:Quest {id: $quest_id})
+    DELETE r
+    """
+    tx.run(delete_rel_query, goal_id=goal_node["id"], quest_id=completed_quest_id)
 
-    # Determine the next quest
-    if completed_quest_index + 1 < len(plan):
-        next_task_data = plan[completed_quest_index + 1]
+    plan = json.loads(goal_node["full_plan_json"])
 
-        # Create and link the next quest
-        new_quest_data = {"name": next_task_data['title'], "description": next_task_data['description']}
+    # Determine completed quest index by comparing titles
+    completed_index = next((i for i, t in enumerate(plan) if t["title"] == quest_node["name"]), -1)
+    if completed_index == -1:
+        return None
+
+    # If there is a next task, create the quest and set it as active
+    if completed_index + 1 < len(plan):
+        next_task = plan[completed_index + 1]
+        new_quest_data = {"name": next_task["title"], "description": next_task["description"]}
         new_quest_node = create_quest_and_link_to_user(tx, new_quest_data, user_email)
 
-        # Link new quest to the goal
-        link_quest_to_goal_query = """
+        # Link goal to new quest as active
+        link_active_query = """
         MATCH (g:Goal {id: $goal_id})
         MATCH (q:Quest {id: $quest_id})
-        CREATE (g)-[:NEXT_STEP]->(q)
+        CREATE (g)-[:HAS_ACTIVE_QUEST]->(q)
         """
-        tx.run(link_quest_to_goal_query, goal_id=goal_node['id'], quest_id=new_quest_node['id'])
+        tx.run(link_active_query, goal_id=goal_node["id"], quest_id=new_quest_node["id"])
 
-        # Create a PRECEDES relationship from the old quest to the new one
-        link_quests_query = """
-        MATCH (old_quest:Quest {id: $completed_quest_id})
-        MATCH (new_quest:Quest {id: $new_quest_id})
-        CREATE (old_quest)-[:PRECEDES]->(new_quest)
+        # Link old quest to new quest for history
+        precedes_query = """
+        MATCH (old:Quest {id: $old_id})
+        MATCH (new:Quest {id: $new_id})
+        CREATE (old)-[:PRECEDES]->(new)
         """
-        tx.run(link_quests_query, completed_quest_id=completed_quest_id, new_quest_id=new_quest_node['id'])
+        tx.run(precedes_query, old_id=completed_quest_id, new_id=new_quest_node["id"])
 
         return new_quest_node
-    else:
-        # No more quests, mark goal as completed
-        complete_goal_query = """
-        MATCH (g:Goal {id: $goal_id})
-        SET g.status = 'completed'
-        """
-        tx.run(complete_goal_query, goal_id=goal_node['id'])
 
-        # Create ACHIEVED_GOAL relationship
-        achieve_goal_query = """
-        MATCH (u:User {email: $user_email})
-        MATCH (g:Goal {id: $goal_id})
-        MERGE (u)-[:ACHIEVED_GOAL]->(g)
-        """
-        tx.run(achieve_goal_query, user_email=user_email, goal_id=goal_node['id'])
+    # Otherwise mark the goal completed and link achievement
+    complete_query = """
+    MATCH (g:Goal {id: $goal_id})
+    SET g.status = 'completed'
+    """
+    tx.run(complete_query, goal_id=goal_node["id"])
 
-        return None
+    achieve_query = """
+    MATCH (u:User {email: $user_email})
+    MATCH (g:Goal {id: $goal_id})
+    MERGE (u)-[:ACHIEVED_GOAL]->(g)
+    """
+    tx.run(achieve_query, user_email=user_email, goal_id=goal_node["id"])
+
+    return None
 
 
 # ---- Accomplishment CRUD Operations ----
