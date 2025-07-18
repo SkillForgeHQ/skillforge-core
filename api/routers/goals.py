@@ -1,20 +1,18 @@
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from typing import List
-from neo4j import Session as Neo4jSession  # Changed Driver to Session
+from neo4j import Session as Neo4jSession
+import json
+
 from ..ai.parser import goal_parser_chain
+from ..ai.schemas import ParsedGoal
+from ..database import get_graph_db_session
+from .. import graph_crud
+from .. import schemas
+from ..schemas import User
 
-# ParsedGoal is no longer the direct response_model, but its structure is used
-from ..ai.schemas import ParsedGoal, SubTask
-
-# Database Imports
-from ..database import get_graph_db_session  # Changed to get_graph_db_session
-from .. import graph_crud  # Added graph_crud import
-from .. import schemas  # Added schemas import for response_model
-
-# Security Imports
-from .auth import get_current_user  # Not used in this specific function currently
-from ..schemas import User  # Not used in this specific function currently
+# Security Imports - Assuming get_current_user is in an auth submodule
+from .auth import get_current_user
 
 router = APIRouter()
 
@@ -23,7 +21,7 @@ class GoalRequest(BaseModel):
     goal: str
 
 
-@router.post("/goals/parse", response_model=schemas.GoalAndQuest, tags=["AI"])
+@router.post("/parse", response_model=schemas.GoalAndQuest, tags=["AI"])
 async def parse_goal_into_subtasks(
     request: GoalRequest,
     db: Neo4jSession = Depends(get_graph_db_session),
@@ -43,8 +41,6 @@ async def parse_goal_into_subtasks(
                 status_code=400, detail="Could not parse the goal into sub-tasks."
             )
 
-        import json
-
         full_plan_json = json.dumps(
             [sub_task.dict() for sub_task in parsed_result.sub_tasks]
         )
@@ -54,10 +50,10 @@ async def parse_goal_into_subtasks(
         )
 
         # This transaction creates the goal and the first quest
-        def create_goal_and_first_quest(tx, goal_data, user_email):
-            # Create the Goal node
+        def create_goal_and_first_quest(tx, goal_data_dict, user_email):
+            # Create the Goal node and link it to the user
             goal_node = graph_crud.create_goal_and_link_to_user(
-                tx, goal_data, user_email
+                tx, goal_data_dict, user_email
             )
 
             # Create the first Quest from the plan
@@ -66,38 +62,35 @@ async def parse_goal_into_subtasks(
                 "name": first_sub_task.title,
                 "description": first_sub_task.description,
             }
+            # This function also links the quest to the user with [:HAS_QUEST]
             first_quest_node = graph_crud.create_quest_and_link_to_user(
                 tx, quest_data, user_email
             )
 
-            # Link Goal to the first Quest
+            # Link Goal to the first Quest with the correct [:HAS_ACTIVE_QUEST]
+            # as per the AGENTS.md spec
             link_query = """
             MATCH (g:Goal {id: $goal_id})
             MATCH (q:Quest {id: $quest_id})
-            CREATE (g)-[:FIRST_STEP]->(q)
+            MERGE (g)-[:HAS_ACTIVE_QUEST]->(q)
             """
             tx.run(link_query, goal_id=goal_node["id"], quest_id=first_quest_node["id"])
 
-            # Mark quest as active for the user
-            active_rel_query = """
-            MATCH (u:User {email: $user_email})
-            MATCH (q:Quest {id: $quest_id})
-            MERGE (u)-[:HAS_ACTIVE_QUEST]->(q)
-            """
-            tx.run(
-                active_rel_query, user_email=user_email, quest_id=first_quest_node["id"]
-            )
-
             return goal_node, first_quest_node
 
-        # Execute the transaction using a lambda to satisfy the neo4j driver
+        # Execute the transaction
         goal_node, first_quest = db.write_transaction(
-            lambda tx: create_goal_and_first_quest(tx, goal_data, current_user.email)
+            create_goal_and_first_quest,
+            goal_data,
+            current_user.email
         )
 
-        goal_model = schemas.Goal.model_validate(dict(goal_node))
-        quest_model = schemas.Quest.model_validate(dict(first_quest))
+        # Validate the output with our Pydantic models
+        goal_model = schemas.Goal.model_validate(goal_node)
+        quest_model = schemas.Quest.model_validate(first_quest)
 
         return {"goal": goal_model, "quest": quest_model}
     except Exception as e:
+        # It's good practice to log the actual error for debugging
+        print(f"Error processing goal: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to process goal: {str(e)}")
