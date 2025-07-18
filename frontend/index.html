@@ -3,13 +3,41 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SkillForge</title>
+    <title>SkillForge MVP</title>
+    <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
-    <h1>SkillForge</h1>
-    <textarea id="goal-input" placeholder="Enter your learning goal"></textarea>
-    <button id="submit-goal">Submit</button>
-    <div id="quest-display"></div>
-    <script src="script.js"></script>
+    <h1>SkillForge MVP</h1>
+
+    <section id="user-section">
+        <h2>User Management</h2>
+        <input id="email" type="email" placeholder="Email">
+        <input id="password" type="password" placeholder="Password">
+        <button id="register-btn">Create User</button>
+        <button id="login-btn">Log In</button>
+        <pre id="user-result"></pre>
+    </section>
+
+    <section id="goal-section">
+        <h2>Goal Parsing</h2>
+        <textarea id="goal" placeholder="Enter your goal"></textarea>
+        <button id="submit-goal">Submit Goal</button>
+        <div id="quest-display"></div>
+    </section>
+
+    <section id="accomplishment-section">
+        <h2>Active Quest</h2>
+        <div id="active-quest"></div>
+        <textarea id="accomplishment" placeholder="Describe your accomplishment"></textarea>
+        <button id="submit-accomplishment">Submit Accomplishment</button>
+        <pre id="accomplishment-result"></pre>
+    </section>
+
+    <section id="vc-section">
+        <h2>Verifiable Credential</h2>
+        <pre id="vc-display"></pre>
+    </section>
+
+    <script src="/static/script.js"></script>
 </body>
 </html>
