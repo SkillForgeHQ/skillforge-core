@@ -111,3 +111,8 @@ class Accomplishment(AccomplishmentCreate):
         if isinstance(value, Neo4jDateTime):
             return value.to_native()
         return value
+
+
+class GoalAndQuest(BaseModel):
+    goal: Goal
+    quest: Quest

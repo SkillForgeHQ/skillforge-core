@@ -1,5 +1,28 @@
 let token = null;
 let activeQuest = null;
+let questPlan = [];
+let currentQuestIndex = 0;
+
+function renderQuestList() {
+    const listEl = document.getElementById('quest-list');
+    if (!listEl) return;
+    listEl.innerHTML = '';
+
+    questPlan.forEach((quest, idx) => {
+        const li = document.createElement('li');
+        li.textContent = `${quest.title}: ${quest.description}`;
+
+        if (idx < currentQuestIndex) {
+            li.classList.add('completed');
+        } else if (idx === currentQuestIndex) {
+            li.classList.add('active');
+        } else {
+            li.classList.add('future');
+        }
+
+        listEl.appendChild(li);
+    });
+}
 
 async function createUser() {
     const email = document.getElementById('email').value;
@@ -40,9 +63,33 @@ async function submitGoal() {
         body: JSON.stringify({ goal: goalText })
     });
     const data = await resp.json();
-    activeQuest = data;
-    document.getElementById('quest-display').textContent = `${data.name}: ${data.description}`;
-    document.getElementById('active-quest').textContent = `${data.name}: ${data.description}`;
+
+    // Determine where the goal and quest information is located in the response
+    let planJson = null;
+    if (data.full_plan_json) {
+        planJson = data.full_plan_json;
+        activeQuest = data.first_quest || {
+            id: data.id,
+            name: data.name,
+            description: data.description,
+        };
+    } else if (data.goal) {
+        planJson = data.goal.full_plan_json;
+        activeQuest = data.quest || data.goal.first_quest;
+    } else {
+        activeQuest = data;
+    }
+
+    try {
+        questPlan = JSON.parse(planJson);
+    } catch (e) {
+        questPlan = [];
+    }
+    currentQuestIndex = 0;
+
+    document.getElementById('quest-display').textContent = activeQuest ? `${activeQuest.name}: ${activeQuest.description}` : '';
+    document.getElementById('active-quest').textContent = activeQuest ? `${activeQuest.name}: ${activeQuest.description}` : '';
+    renderQuestList();
 }
 
 async function submitAccomplishment() {
@@ -65,6 +112,14 @@ async function submitAccomplishment() {
     });
     const vcData = await vcResp.json();
     document.getElementById('vc-display').textContent = vcData.verifiable_credential_jwt;
+
+    // Update quest list UI to mark progress
+    if (currentQuestIndex < questPlan.length - 1) {
+        currentQuestIndex += 1;
+        const nextQuest = questPlan[currentQuestIndex];
+        document.getElementById('active-quest').textContent = `${nextQuest.title}: ${nextQuest.description}`;
+    }
+    renderQuestList();
 }
 
 document.getElementById('register-btn').addEventListener('click', createUser);
