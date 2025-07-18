@@ -2,42 +2,72 @@ Project Context for SkillForge AI Development
 1. Mission & Vision
 Project Name: SkillForge
 
-Vision: To create an AI-driven platform that builds a user's professional story through a graph of concrete, verifiable accomplishments. SkillForge maps goals to a personalized path of "quests," verifies completed work, and issues portable, cryptographic credentials for each accomplishment.
+Vision: To create an AI-driven platform that builds a user's professional story through a graph of concrete, verifiable accomplishments. SkillForge maps goals to a guided, one-step-at-a-time journey, verifies completed work, and issues portable, cryptographic credentials for each accomplishment.
 
-2. Core Architecture: The Accomplishment Graph
-SkillForge's architecture is built on an evidence-based model centered on tangible work. The final, fully-connected graph structure is:
+2. Core Graph Logic & State Machine (Source of Truth)
+This section describes the exact, non-negotiable behavior of our graph data. The system follows a "Hub-and-Spoke" model where the :Goal node is the master controller.
 
-(u:User)-[:HAS_QUEST]->(q:Quest)
-(a:Accomplishment)-[:FULFILLS]->(q:Quest)
-(u:User)-[c:COMPLETED]->(a:Accomplishment)
-(a:Accomplishment)-[:DEMONSTRATES]->(s:Skill)
+Event 1: Goal Creation
+Trigger: A user submits a high-level goal to the POST /api/goals/parse endpoint.
 
-Key Features:
+Action Sequence:
 
-Quest Assignment: The POST /goals/parse endpoint uses an LLM to break down a user's goal into :Quest nodes, which are immediately linked to the user via a [:HAS_QUEST] relationship.
+The AI parser generates a full, ordered list of all sub-tasks required to complete the goal.
 
-Evidence-Based Accomplishments: Users submit work against a quest, creating an :Accomplishment node linked via [:FULFILLS]. User identity is handled exclusively by the auth token.
+A single :Goal node is created. The full, ordered list of sub-tasks is stored as a JSON string in its full_plan_json property. Its status is set to "in-progress".
 
-Verifiable Credential (VC) Issuance: The POST /accomplishments/{id}/issue-credential endpoint generates a signed JWT-based VC. A receipt (vc_id, vc_issuanceDate) is stored as properties on the [:COMPLETED] relationship, creating a complete, auditable trail from assignment to credential.
+A [:HAS_GOAL] relationship is created from the :User to the new :Goal.
+
+The system reads only the first task from the full_plan_json.
+
+A single :Quest node is created for this first task.
+
+A [:HAS_ACTIVE_QUEST] relationship is created from the :Goal to this new :Quest.
+
+A [:HAS_QUEST] relationship is created from the :User to this new :Quest.
+
+Result: The user has one active quest. The graph knows the full plan, but only the first step is an actual :Quest node.
+
+Event 2: Quest Completion & Advancement
+Trigger: A user submits an accomplishment to the POST /api/accomplishments/process endpoint, linking it to the active quest via quest_id.
+
+Action Sequence:
+
+An :Accomplishment node is created.
+
+A [:COMPLETED] relationship is created from the :User to the new :Accomplishment.
+
+A [:FULFILLS] relationship is created from the :Accomplishment to the :Quest that was just completed.
+
+The system calls the advance_goal logic, which performs the following:
+a. It finds the completed :Quest and its parent :Goal.
+b. The [:HAS_ACTIVE_QUEST] relationship on the :Goal is deleted. The [:PRECEDES] relationship is created between the old quest and the new one.
+c. It reads the full_plan_json from the :Goal and finds the next task in the sequence.
+
+Result (If there is a next quest):
+
+A new :Quest node is created for the next task.
+
+A new [:HAS_ACTIVE_QUEST] relationship is created from the :Goal to the new :Quest.
+
+A new [:HAS_QUEST] relationship is created from the :User to the new :Quest.
+
+Result (If this was the FINAL quest): See Event 3.
+
+Event 3: Goal Completion
+Trigger: The advance_goal logic is called for the final quest in the full_plan_json.
+
+Action Sequence:
+
+The status property on the :Goal node is updated from "in-progress" to "completed".
+
+A new [:ACHIEVED_GOAL] relationship is created from the :User to the :Goal.
+
+Result: The user's journey for this goal is complete and recorded in the graph.
 
 3. Technology Stack & Deployment
 Backend: FastAPI (Python)
 
-Databases: PostgreSQL (for user auth/data), Neo4j (for the knowledge graph)
+Databases: PostgreSQL, Neo4j
 
-AI/LLM: LangChain with gpt-4o-mini and other models.
-
-Cryptography: jwcrypto for key management, python-jose for JWTs.
-
-Containerization & Deployment: The full stack is containerized with Docker (docker-compose.yml) and deployed on Render.
-
-4. CI/CD & Testing Environment
-Platform: GitHub Actions (.github/workflows/ci.yml).
-
-Services: The CI pipeline runs postgres and neo4j as service containers.
-
-Environment Configuration: Test configuration (database URLs, credentials) is forcefully set within tests/conftest.py using pytest_configure to ensure absolute consistency and override any environment variables from the runner.
-
-Service Lifecycle: The CI workflow includes a dedicated "Wait for services" step that uses nc (netcat) to probe the database ports, ensuring the tests only run after the services are fully accessible. This resolves all previous Connection refused race condition errors.
-
-Test Suite: pytest is used for all tests. The suite includes unit, integration, and end-to-end tests that mock AI services and use dependency overrides (app.dependency_overrides) for testing protected endpoints.
+CI/CD: GitHub Actions with service containers.
