@@ -1,6 +1,10 @@
 import os
 from langchain_openai import ChatOpenAI
-from langchain.prompts import ChatPromptTemplate
+# langchain.prompts was renamed in newer versions; fall back if needed
+try:
+    from langchain.prompts import ChatPromptTemplate
+except ImportError:  # pragma: no cover - fallback for newer langchain
+    from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import PydanticOutputParser
 from .schemas import ParsedGoal
 

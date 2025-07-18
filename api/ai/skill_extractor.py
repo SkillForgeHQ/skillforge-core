@@ -1,5 +1,8 @@
 from langchain_openai import ChatOpenAI
-from langchain.prompts import ChatPromptTemplate
+try:
+    from langchain.prompts import ChatPromptTemplate
+except ImportError:  # pragma: no cover
+    from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import PydanticOutputParser
 from .schemas import ExtractedSkills
 
