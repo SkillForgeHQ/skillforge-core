@@ -200,17 +200,27 @@ def advance_goal(tx, completed_quest_id: str, user_email: str):
     """Advance a goal's state machine after a quest is completed."""
     import json
 
-    # Locate the goal that currently has this quest as its active quest
+    # Locate the goal that currently has this quest as its active quest. We only
+    # need the Goal node here; the Quest's title will be fetched separately.
     find_query = """
-    MATCH (u:User {email: $user_email})-[:HAS_GOAL]->(g:Goal)-[r:HAS_ACTIVE_QUEST]->(q:Quest {id: $quest_id})
-    RETURN g, q
+    MATCH (u:User {email: $user_email})-[:HAS_GOAL]->(g:Goal)-[:HAS_ACTIVE_QUEST]->(q:Quest {id: $quest_id})
+    RETURN g
     """
     record = tx.run(find_query, user_email=user_email, quest_id=completed_quest_id).single()
     if not record:
         return None
 
     goal_node = record["g"]
-    quest_node = record["q"]
+
+    plan = json.loads(goal_node["full_plan_json"])
+
+    # Look up the completed quest's name to determine its position in the plan
+    get_name_query = "MATCH (q:Quest {id: $quest_id}) RETURN q.name AS name"
+    quest_name_record = tx.run(get_name_query, quest_id=completed_quest_id).single()
+    completed_name = quest_name_record["name"] if quest_name_record else None
+    completed_index = next((i for i, t in enumerate(plan) if t["title"] == completed_name), -1)
+    if completed_index == -1:
+        return None
 
     # Remove the active quest relationship
     delete_rel_query = """
@@ -218,13 +228,6 @@ def advance_goal(tx, completed_quest_id: str, user_email: str):
     DELETE r
     """
     tx.run(delete_rel_query, goal_id=goal_node["id"], quest_id=completed_quest_id)
-
-    plan = json.loads(goal_node["full_plan_json"])
-
-    # Determine completed quest index by comparing titles
-    completed_index = next((i for i, t in enumerate(plan) if t["title"] == quest_node["name"]), -1)
-    if completed_index == -1:
-        return None
 
     # If there is a next task, create the quest and set it as active
     if completed_index + 1 < len(plan):
